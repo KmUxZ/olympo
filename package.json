@@ -1,0 +1,20 @@
+{
+  "name": "olympo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "OLYMPO — ecosistema de herramientas para e-commerce. Primer producto: Argos.",
+  "workspaces": [
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c auto \"npm run dev -w @olympo/server\" \"npm run dev -w @olympo/web\"",
+    "seed": "npm run seed -w @olympo/server",
+    "build": "npm run build -w @olympo/web",
+    "start": "npm run start -w @olympo/server",
+    "typecheck": "npm run typecheck -w @olympo/server && npm run typecheck -w @olympo/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

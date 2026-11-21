@@ -1,0 +1,83 @@
+/*
+ * TOKENS DE DISEÑO — único lugar donde viven colores, tipografías, radios y espaciados.
+ * Paleta de la "Propuesta visual 01" de OLYMPO:
+ *   Obsidian #111827 · Electric Blue #386BFF (ecosistema) · Cloud #F7F8FC · Slate #64748B · Argos Teal #0F9D92 (producto)
+ * Pendiente de la identidad definitiva: tipografía de marca y archivos de logotipo (ver Layout.tsx).
+ * Ninguna pantalla usa colores ni fuentes directamente: todo cambio de identidad se hace aquí.
+ */
+:root {
+  /* Marca */
+  --brand-obsidian: #111827;
+  --brand-blue: #386bff;
+  --brand-cloud: #f7f8fc;
+  --brand-slate: #64748b;
+  --brand-teal: #0f9d92;
+
+  /* Tipografía (provisional: fuente del sistema hasta recibir la tipografía de marca) */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+
+  /* Superficies y texto */
+  --color-bg: var(--brand-cloud);
+  --color-surface: #ffffff;
+  --color-surface-alt: #f1f4f9;
+  --color-border: #e2e6ee;
+  --color-border-strong: #c7cedb;
+  --color-text: var(--brand-obsidian);
+  --color-text-muted: #566175; /* Slate oscurecido un punto para cumplir contraste AA sobre Cloud */
+
+  /* Barra lateral (clara, como en la propuesta) */
+  --color-sidebar: #ffffff;
+  --color-sidebar-border: var(--color-border);
+  --color-sidebar-strong: var(--brand-obsidian);
+  --color-sidebar-text: #334155;
+  --color-sidebar-muted: var(--brand-slate);
+  --color-sidebar-hover: #f1f4f9;
+  --color-sidebar-active: #e2f4f2;
+  --color-sidebar-active-text: #0a6f67;
+
+  /* Acción principal: Obsidian. El teal de marca con texto blanco no alcanza contraste AA (3,4:1),
+     por eso se usa como acento (navegación activa, estados, gráficos) y no como fondo de botones. */
+  --color-primary: var(--brand-obsidian);
+  --color-primary-hover: #1f2937;
+  --color-primary-text: #ffffff;
+  --color-accent: var(--brand-teal);
+  --color-focus: var(--brand-blue);
+
+  /* Semánticos */
+  --color-ok: #0a6f67;
+  --color-ok-bg: #e2f4f2;
+  --color-warn: #8a4b08;
+  --color-warn-bg: #fdf2d8;
+  --color-danger: #b42318;
+  --color-danger-bg: #fdecea;
+  --color-info: #2a56d6; /* Electric Blue oscurecido para texto y enlaces */
+  --color-info-bg: #e9efff;
+  --color-neutral: #475569;
+  --color-neutral-bg: #eceff5;
+
+  /* Estados de actividad (línea de tiempo y distintivos) */
+  --state-observada: var(--brand-teal);
+  --state-sin-actividad: #b3bccb;
+  --state-pausa: #e0a030;
+  --state-sin-datos: #ffffff;
+  --state-sin-senal: #c2410c;
+
+  /* Forma y espacio */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --shadow-sm: 0 1px 2px rgb(17 24 39 / 5%);
+  --shadow-lg: 0 12px 32px rgb(17 24 39 / 18%);
+  --sidebar-width: 232px;
+}

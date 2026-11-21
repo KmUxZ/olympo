@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "argos-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "@olympo/server"],
+      "port": 4000
+    },
+    {
+      "name": "argos-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "@olympo/web"],
+      "port": 5173
+    }
+  ]
+}

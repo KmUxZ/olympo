@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Argos — Qué se registra</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="page">
+    <h1>Qué registra Argos y qué no</h1>
+    <p class="muted">Esta extensión acompaña tu turno de trabajo. Aquí puedes ver, sin letra pequeña, qué información guarda.</p>
+
+    <div class="cols">
+      <div>
+        <h2>Sí se registra</h2>
+        <ul>
+          <li>La hora en que inicias y finalizas tu turno.</li>
+          <li>Las pausas que tú declaras y su motivo.</li>
+          <li>Por cada minuto del turno, <strong>cuántas</strong> teclas, clics y desplazamientos hubo dentro de las herramientas de trabajo autorizadas (solo el número).</li>
+          <li>Cuántos segundos estuvo en uso cada herramienta autorizada.</li>
+          <li>Si el equipo estaba activo, inactivo o con la pantalla bloqueada (dato que entrega Chrome).</li>
+          <li>Si la extensión tenía conexión y cuándo sincronizó por última vez.</li>
+          <li>Las novedades que tú reportas.</li>
+        </ul>
+      </div>
+      <div>
+        <h2>Nunca se registra</h2>
+        <ul>
+          <li>Qué teclas pulsas ni el texto que escribes.</li>
+          <li>Contraseñas: dentro de un campo de contraseña no se cuenta nada.</li>
+          <li>El contenido de tus conversaciones, formularios o portapapeles.</li>
+          <li>Capturas de pantalla, cámara o micrófono.</li>
+          <li>Direcciones de páginas: solo se guarda el nombre de la herramienta (por ejemplo «WhatsApp Web»).</li>
+          <li>Nada de sitios personales ni de cualquier página fuera de las herramientas autorizadas: la extensión no tiene permiso para verlas.</li>
+          <li>Nada en ventanas de incógnito.</li>
+          <li>Nada fuera de tu turno, ni durante tus pausas.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2>Cómo saber si está registrando</h2>
+    <ul>
+      <li><strong>ON</strong> (verde) en el icono: turno activo, se registra actividad agregada.</li>
+      <li><strong>II</strong> (ámbar): estás en pausa, no se registra actividad.</li>
+      <li><strong>!</strong> (rojo): hay un problema de conexión o falta autorizar las herramientas.</li>
+      <li>Sin distintivo: no hay turno activo y no se registra nada.</li>
+    </ul>
+
+    <h2>Para qué se usa</h2>
+    <p>Los conteos sirven para saber que hay actividad en las herramientas, no para medir tu desempeño. No teclear no significa no trabajar: puedes estar leyendo, en una llamada o resolviendo una novedad. Las ventas, mensajes y tiempos de respuesta se obtienen de las propias plataformas, nunca del teclado.</p>
+    <p>Puedes consultar todo lo registrado de cada uno de tus turnos en la plataforma web, sección «Mi turno». Los registros por minuto se eliminan automáticamente al cumplirse el plazo de conservación definido por tu empresa.</p>
+
+    <h2>Herramientas autorizadas en este equipo</h2>
+    <div id="tools" class="muted">—</div>
+
+    <h2>Datos pendientes de enviar ahora mismo</h2>
+    <p class="muted small">Esto es literalmente lo que la extensión tiene guardado en este equipo en este momento.</p>
+    <div id="pending" class="muted">—</div>
+
+    <script type="module" src="privacy.js"></script>
+  </body>
+</html>
