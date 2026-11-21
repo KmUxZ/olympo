@@ -180,6 +180,24 @@ export async function visibleUserIds(ctx: Ctx): Promise<string[] | null> {
   return [...new Set([ctx.userId, ...rows.map((r) => r.id)])];
 }
 
+/**
+ * Fragmento SQL que limita una consulta a las personas visibles para quien la hace.
+ * Añade el parámetro necesario a `params`. Para el administrador no añade nada.
+ */
+export async function scopeSql(ctx: Ctx, column: string, params: unknown[]): Promise<string> {
+  const ids = await visibleUserIds(ctx);
+  if (!ids) return '';
+  params.push(JSON.stringify(ids));
+  return ` AND ${column} IN (SELECT value::uuid FROM jsonb_array_elements_text($${params.length}::jsonb))`;
+}
+
+/** Equipos que supervisa quien hace la petición (vacío si no supervisa ninguno). */
+export async function supervisedTeamIds(ctx: Ctx): Promise<string[]> {
+  if (ctx.role !== 'supervisor') return [];
+  const { rows } = await db.query<{ id: string }>(`SELECT id FROM core_teams WHERE company_id = $1 AND supervisor_id = $2`, [ctx.companyId, ctx.userId]);
+  return rows.map((r) => r.id);
+}
+
 export async function assertCanSeeUser(ctx: Ctx, userId: string): Promise<void> {
   const ids = await visibleUserIds(ctx);
   if (ids && !ids.includes(userId)) throw forbidden();
