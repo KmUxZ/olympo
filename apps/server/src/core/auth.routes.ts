@@ -29,8 +29,9 @@ function registerFailure(key: string): void {
 
 export function publicUser(ctx: Ctx) {
   return {
-    user: { id: ctx.userId, name: ctx.name, email: ctx.email, role: ctx.role, teamId: ctx.teamId, mustChangePassword: ctx.mustChangePassword },
+    user: { id: ctx.userId, name: ctx.name, email: ctx.email, role: ctx.role, teamId: ctx.teamId, mustChangePassword: ctx.mustChangePassword, isPlatformAdmin: ctx.isPlatformAdmin },
     company: ctx.company,
+    support: ctx.support,
   };
 }
 
@@ -44,8 +45,9 @@ export function authRoutes(app: FastifyInstance): void {
     checkRate(rateKey);
 
     const { rows } = await db.query(
-      `SELECT u.id, u.company_id, u.name, u.email, u.role, u.team_id, u.password_hash, u.status, u.must_change_password
-         FROM core_users u WHERE lower(u.email) = $1`,
+      `SELECT u.id, u.company_id, u.name, u.email, u.role, u.team_id, u.password_hash, u.status, u.must_change_password, u.is_platform_admin,
+              c.status AS company_status
+         FROM core_users u JOIN core_companies c ON c.id = u.company_id WHERE lower(u.email) = $1`,
       [body.email],
     );
     const user = rows[0];
@@ -59,6 +61,9 @@ export function authRoutes(app: FastifyInstance): void {
         });
       }
       throw new HttpError(401, 'credenciales_invalidas', 'Correo o contraseña incorrectos.');
+    }
+    if (user.company_status === 'suspended' && !user.is_platform_admin) {
+      throw new HttpError(403, 'empresa_suspendida', 'La cuenta de tu empresa está suspendida. Contacta con tu administrador.');
     }
     if (body.client === 'extension' && user.must_change_password) {
       throw new HttpError(403, 'cambio_contrasena_requerido', 'Primero entra a la plataforma web y cambia tu contraseña temporal.');
@@ -76,7 +81,7 @@ export function authRoutes(app: FastifyInstance): void {
       entityType: 'usuario', entityId: user.id, summary: `Inicio de sesión (${body.client === 'web' ? 'plataforma web' : 'extensión'})`, ip: req.ip,
     });
 
-    const payload = { user: { id: user.id, name: user.name, email: user.email, role: user.role, teamId: user.team_id, mustChangePassword: user.must_change_password } };
+    const payload = { user: { id: user.id, name: user.name, email: user.email, role: user.role, teamId: user.team_id, mustChangePassword: user.must_change_password, isPlatformAdmin: user.is_platform_admin } };
     if (body.client === 'extension') return { ...payload, token };
     reply.setCookie(SESSION_COOKIE, token, {
       httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/', maxAge: config.sessionDays * 86400,

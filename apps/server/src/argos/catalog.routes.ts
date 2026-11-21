@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db, inIds } from '../db/db.ts';
-import { assertCanSeeUser, auditBy, badRequest, guard, notFound, parse, visibleUserIds } from '../core/http.ts';
+import { assertCanSeeUser, assertWithinPlan, auditBy, badRequest, guard, notFound, parse, visibleUserIds } from '../core/http.ts';
 
 const idParam = z.object({ id: z.uuid() });
 
@@ -87,6 +87,7 @@ export function catalogRoutes(app: FastifyInstance): void {
 
   app.post('/api/argos/lines', guard('admin'), async (req) => {
     const body = parse(lineBody, req.body);
+    if (body.active) await assertWithinPlan(req.ctx.companyId, 'lines');
     const assignee = body.assignedUserId ? await userName(req.ctx.companyId, body.assignedUserId) : null;
     const { rows } = await db.query(
       `INSERT INTO argos_lines (company_id, label, channel, identifier, assigned_user_id, active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
@@ -104,6 +105,7 @@ export function catalogRoutes(app: FastifyInstance): void {
     const body = parse(lineBody, req.body);
     const prev = (await db.query(`SELECT label, channel, identifier, assigned_user_id, active FROM argos_lines WHERE id = $1 AND company_id = $2`, [id, req.ctx.companyId])).rows[0];
     if (!prev) throw notFound('Línea no encontrada.');
+    if (body.active && !prev.active) await assertWithinPlan(req.ctx.companyId, 'lines');
     const assignee = body.assignedUserId ? await userName(req.ctx.companyId, body.assignedUserId) : null;
     await db.query(`UPDATE argos_lines SET label = $1, channel = $2, identifier = $3, assigned_user_id = $4, active = $5 WHERE id = $6`, [
       body.label, body.channel, body.identifier, body.assignedUserId ?? null, body.active, id,

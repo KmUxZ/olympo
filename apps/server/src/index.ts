@@ -6,6 +6,7 @@ import { db } from './db/db.ts';
 import { HttpError } from './core/http.ts';
 import { authRoutes } from './core/auth.routes.ts';
 import { adminRoutes } from './core/admin.routes.ts';
+import { platformRoutes } from './core/platform.routes.ts';
 import { catalogRoutes } from './argos/catalog.routes.ts';
 import { shiftRoutes } from './argos/shifts.routes.ts';
 import { dashboardRoutes } from './argos/dashboard.routes.ts';
@@ -29,6 +30,7 @@ app.get('/api/health', async () => ({ ok: true, serverTime: new Date(), db: db.k
 // Plataforma compartida (core) y módulos de producto. Zeus, Athena y Hermes se registrarán aquí como módulos hermanos.
 authRoutes(app);
 adminRoutes(app);
+platformRoutes(app);
 catalogRoutes(app);
 shiftRoutes(app);
 dashboardRoutes(app);

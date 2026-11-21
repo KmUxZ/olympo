@@ -70,6 +70,8 @@ export function Settings() {
 
       <PancakeSettings />
 
+      <SupportAccess />
+
       <form className="card" onSubmit={save}>
         <div className="card-head"><h2>Conservación de datos y umbrales</h2></div>
         <div className="card-pad stack">
@@ -106,6 +108,46 @@ export function Settings() {
         />
       )}
     </>
+  );
+}
+
+/** La empresa decide si el equipo de OLYMPO puede entrar a ayudarla, y por cuánto tiempo. */
+function SupportAccess() {
+  const access = useApi<{ until: string | null }>('/api/settings/support-access');
+  const [error, setError] = useState<string | null>(null);
+  const until = access.data?.until ? new Date(access.data.until) : null;
+  const open = Boolean(until && until.getTime() > Date.now());
+  async function change(method: 'POST' | 'DELETE', hours?: number) {
+    setError(null);
+    try {
+      await api(method, '/api/settings/support-access', hours ? { hours } : undefined);
+      await access.reload();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h2>Acceso de soporte</h2>
+        {open ? <Badge tone="warn">Concedido hasta {until!.toLocaleString('es', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</Badge> : <Badge tone="plain">No concedido</Badge>}
+      </div>
+      <div className="card-pad stack">
+        <ErrorNote error={error ?? access.error} />
+        <p className="small muted">
+          El equipo de OLYMPO no puede ver los datos de tu empresa. Si necesitas ayuda, puedes darle acceso temporal: podrá entrar como administrador
+          hasta que venza el plazo o lo revoques, y todo lo que haga quedará en tu auditoría.
+        </p>
+        <div className="actions">
+          {open
+            ? <button className="btn danger" onClick={() => void change('DELETE')}>Revocar acceso ahora</button>
+            : <>
+                <button className="btn" onClick={() => void change('POST', 4)}>Conceder 4 horas</button>
+                <button className="btn" onClick={() => void change('POST', 24)}>Conceder 24 horas</button>
+              </>}
+        </div>
+      </div>
+    </div>
   );
 }
 

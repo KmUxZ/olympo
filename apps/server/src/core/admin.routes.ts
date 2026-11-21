@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { DEFAULT_SETTINGS } from '../config.ts';
 import { db, inIds } from '../db/db.ts';
-import { auditBy, badRequest, guard, notFound, parse, visibleUserIds } from './http.ts';
+import { assertWithinPlan, auditBy, badRequest, guard, notFound, parse, visibleUserIds } from './http.ts';
 import { hashPassword, tempPassword } from './security.ts';
 
 const ROLE_LABEL: Record<string, string> = { admin: 'Administrador', supervisor: 'Supervisor', seller: 'Vendedora' };
@@ -60,6 +60,7 @@ export function adminRoutes(app: FastifyInstance): void {
     const exists = await db.query('SELECT 1 FROM core_users WHERE lower(email) = $1', [body.email]);
     if (exists.rows.length) throw badRequest('Ya existe una cuenta con ese correo.', 'correo_duplicado');
 
+    if (body.role === 'seller') await assertWithinPlan(req.ctx.companyId, 'sellers');
     const password = tempPassword();
     const { rows } = await db.query(
       `INSERT INTO core_users (company_id, email, name, role, password_hash, team_id, is_demo)
@@ -101,6 +102,8 @@ export function adminRoutes(app: FastifyInstance): void {
       team_id: body.teamId !== undefined ? body.teamId : current.team_id,
       status: body.status ?? current.status,
     };
+    const wasActiveSeller = current.role === 'seller' && current.status === 'active';
+    if (next.role === 'seller' && next.status === 'active' && !wasActiveSeller) await assertWithinPlan(req.ctx.companyId, 'sellers');
     await db.query('UPDATE core_users SET name = $1, role = $2, team_id = $3, status = $4, updated_at = now() WHERE id = $5', [
       next.name, next.role, next.team_id, next.status, id,
     ]);

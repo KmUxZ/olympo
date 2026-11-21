@@ -4,8 +4,10 @@ import { api } from './lib/api';
 
 export type Role = 'admin' | 'supervisor' | 'seller';
 export interface Me {
-  user: { id: string; name: string; email: string; role: Role; teamId: string | null; mustChangePassword: boolean };
+  user: { id: string; name: string; email: string; role: Role; teamId: string | null; mustChangePassword: boolean; isPlatformAdmin: boolean };
   company: { id: string; name: string; timezone: string; isDemo: boolean };
+  /** true si quien opera la plataforma está dentro de esta empresa en modo soporte. */
+  support: boolean;
 }
 
 interface AuthValue {

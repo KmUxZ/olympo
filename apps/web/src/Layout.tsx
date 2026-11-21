@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from './auth';
 import type { Role } from './auth';
+import { api } from './lib/api';
 import { ROLE_LABEL } from './lib/format';
 
 interface Item {
@@ -42,6 +43,10 @@ export function Layout() {
   const { me, logout } = useAuth();
   if (!me) return null;
   const role = me.user.role;
+  async function exitSupport() {
+    await api('POST', '/api/platform/support/exit').catch(() => {});
+    window.location.assign('/plataforma');
+  }
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -71,6 +76,12 @@ export function Layout() {
               </div>
             );
           })}
+          {me.user.isPlatformAdmin && (
+            <div className="nav-group">
+              <span>Plataforma</span>
+              <NavLink to="/plataforma">Empresas</NavLink>
+            </div>
+          )}
           <div className="nav-group">
             <span>Transparencia</span>
             <NavLink to="/que-se-registra">Qué se registra</NavLink>
@@ -89,6 +100,12 @@ export function Layout() {
         </div>
       </aside>
       <div className="main">
+        {me.support && (
+          <div className="demo-banner" role="alert" style={{ background: 'var(--color-info-bg)', color: 'var(--color-info)' }}>
+            <strong>Modo soporte en {me.company.name}.</strong> Estás viendo los datos de un cliente con su permiso; todo lo que hagas queda en su auditoría.{' '}
+            <button className="btn sm" onClick={() => void exitSupport()}>Salir del modo soporte</button>
+          </div>
+        )}
         {me.company.isDemo && (
           <div className="demo-banner" role="note">
             <strong>Entorno de demostración.</strong> Las cuentas, equipos y líneas son ficticios. La actividad que veas proviene únicamente de turnos reales hechos con la extensión.

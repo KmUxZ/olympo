@@ -15,6 +15,7 @@ import { Users } from './pages/Users';
 import { Audit } from './pages/Audit';
 import { Settings } from './pages/Settings';
 import { Privacy } from './pages/Privacy';
+import { Platform } from './pages/Platform';
 import './styles/base.css';
 
 function Only({ roles, children }: { roles: Role[]; children: React.ReactNode }) {
@@ -41,6 +42,7 @@ function App() {
         <Route path="/auditoria" element={<Only roles={['admin']}><Audit /></Only>} />
         <Route path="/configuracion" element={<Only roles={['admin']}><Settings /></Only>} />
         <Route path="/que-se-registra" element={<Privacy />} />
+        {me.user.isPlatformAdmin && <Route path="/plataforma" element={<Platform />} />}
         <Route path="*" element={<Navigate to={home} replace />} />
       </Route>
     </Routes>

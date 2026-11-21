@@ -125,3 +125,18 @@ Nunca lee qué tecla se pulsó, texto, formularios, portapapeles ni direcciones 
 - Límites: la granularidad es de una hora; el tiempo medio diario es una media ponderada por mensajes;
   las horas se interpretan en la zona horaria de la empresa (debe coincidir con la de la página en Pancake).
 - Pendiente: ventas/pedidos, vista por línea y por rango de fechas (módulo Reportes), y webhooks para tiempo real.
+
+## 9. Nivel de plataforma (implementado)
+
+Quien opera OLYMPO tiene un rol aparte (`is_platform_admin`) con el panel **Empresas**:
+
+- Alta de empresas con su primer administrador y contraseña temporal.
+- Suspender y reactivar: al suspender se cierran las sesiones de la empresa, nadie puede entrar y las extensiones dejan de registrar. Los datos se conservan.
+- Límites del plan: máximo de vendedoras y de líneas activas, aplicados en el servidor.
+- Estado de cada cliente: cuentas, líneas, turnos abiertos, último uso y errores de integración.
+- Restablecer el acceso de un administrador.
+
+**Privacidad entre plataforma y clientes.** El panel solo muestra datos de gestión. Para ver datos operativos de un cliente
+hace falta el **modo soporte**: el administrador de la empresa concede acceso por 4 o 24 horas (Configuración → Acceso de soporte),
+puede revocarlo en cualquier momento, y cada entrada y acción queda en la auditoría de esa empresa. Todas las acciones de
+plataforma sobre una empresa (creación, suspensión, límites, restablecimientos) también quedan en su auditoría.

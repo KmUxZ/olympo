@@ -45,6 +45,15 @@ npm run seed -- --empresa "Nombre de la empresa" --admin tu@correo.com --nombre 
 
 Muestra una contraseña temporal que se cambia en el primer inicio de sesión.
 
+### Operar la plataforma (gestionar empresas cliente)
+
+```powershell
+npm run seed -- --plataforma tu@correo.com
+```
+
+Da a esa cuenta el menú **Plataforma → Empresas**: crear empresas, suspenderlas, fijar límites del plan y
+restablecer el acceso de sus administradores. Estos comandos se ejecutan con el servidor detenido.
+
 ## Producción (resumen)
 
 - Define `DATABASE_URL` con un PostgreSQL real. Sin esa variable se usa PostgreSQL embebido (PGlite), pensado solo para desarrollo.

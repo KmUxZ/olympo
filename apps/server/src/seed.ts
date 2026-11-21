@@ -9,7 +9,7 @@ import { config } from './config.ts';
 import { db } from './db/db.ts';
 import { hashPassword, tempPassword } from './core/security.ts';
 
-const { values } = parseArgs({ options: { empresa: { type: 'string' }, admin: { type: 'string' }, nombre: { type: 'string' } } });
+const { values } = parseArgs({ options: { empresa: { type: 'string' }, admin: { type: 'string' }, nombre: { type: 'string' }, plataforma: { type: 'string' } } });
 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
 async function createUser(companyId: string, name: string, email: string, role: string, password: string, teamId: string | null, demo: boolean): Promise<string> {
@@ -21,7 +21,15 @@ async function createUser(companyId: string, name: string, email: string, role: 
   return rows[0].id;
 }
 
-if (values.empresa) {
+if (values.plataforma) {
+  // Da (o confirma) el rol de plataforma a una cuenta existente:  npm run seed -- --plataforma correo@ejemplo.com
+  const { rows } = await db.query(`UPDATE core_users SET is_platform_admin = true WHERE lower(email) = $1 RETURNING name`, [values.plataforma.toLowerCase()]);
+  console.log(rows.length ? `
+${rows[0].name} ahora opera la plataforma OLYMPO (verá «Empresas» en el menú).
+` : `
+No existe ninguna cuenta con el correo ${values.plataforma}.
+`);
+} else if (values.empresa) {
   if (!values.admin) throw new Error('Indica el correo del administrador con --admin');
   const password = tempPassword();
   const company = (await db.query(`INSERT INTO core_companies (name, timezone) VALUES ($1, $2) RETURNING id`, [values.empresa, timezone])).rows[0];
