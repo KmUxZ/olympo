@@ -192,3 +192,82 @@ export function Sparkline({ values, width = 180, height = 40, label }: { values:
     </svg>
   );
 }
+
+export interface AttendanceDay { day: string; scheduled: boolean; pending: boolean; expectedMinutes: number; workedMinutes: number; breakMinutes: number; shifts: number; firstStart: string | null; lateMinutes: number; open: boolean; fulfillment: number | null }
+export interface AttendanceRow { userId: string; userName: string; teamName: string | null; schedule: { startTime: string; endTime: string } | null; days: AttendanceDay[] }
+
+const WEEKDAY = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+/** Paso de la escala (un solo tono, de claro a oscuro). 0 se trata aparte: turno programado que no se inició. */
+const heatStep = (pct: number) => (pct === 0 ? 'none' : pct < 50 ? 1 : pct < 75 ? 2 : pct < 90 ? 3 : 4);
+
+/**
+ * Semana de un vistazo: cumplimiento del turno programado por persona y día.
+ * Cada celda lleva su porcentaje escrito (el color refuerza, no sustituye) y el detalle al pasar el cursor.
+ */
+export function AttendanceHeatmap({ days, rows, today }: { days: { key: string; weekday: number }[]; rows: AttendanceRow[]; today: string }) {
+  const describe = (d: AttendanceDay) => {
+    if (d.pending) return 'Su turno de hoy aún no empieza';
+    if (!d.scheduled) return d.workedMinutes ? `Sin turno programado · trabajó ${fmtMinutes(d.workedMinutes)}` : 'Sin turno programado';
+    if (!d.shifts) return `Turno programado de ${fmtMinutes(d.expectedMinutes)} · no inició turno`;
+    return [
+      `${d.fulfillment}% del turno programado`,
+      `${fmtMinutes(d.workedMinutes)} en turno de ${fmtMinutes(d.expectedMinutes)}${d.open ? ' (en curso)' : ''}`,
+      d.firstStart ? `inició ${d.firstStart}${d.lateMinutes > 5 ? `, ${fmtMinutes(d.lateMinutes)} tarde` : ''}` : '',
+      d.breakMinutes ? `${fmtMinutes(d.breakMinutes)} en pausa` : '',
+    ].filter(Boolean).join(' · ');
+  };
+  return (
+    <div className="heat-wrap">
+      <table className="heat">
+        <caption className="sr-only">Cumplimiento del turno programado por persona y día</caption>
+        <thead>
+          <tr>
+            <th scope="col">Persona</th>
+            {days.map((d) => (
+              <th scope="col" key={d.key} className={`${d.key === today ? 'is-today' : ''} ${d.weekday === 1 ? 'week-start' : ''}`}>
+                <span>{WEEKDAY[d.weekday]}</span>{Number(d.key.slice(8))}
+              </th>
+            ))}
+            <th scope="col" title="Promedio de los días ya terminados con turno programado">Promedio</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            // El día de hoy sigue en curso: no entra en el promedio.
+            const counted = r.days.filter((d) => d.fulfillment !== null && d.day !== today);
+            const avg = counted.length ? Math.round(counted.reduce((n, d) => n + d.fulfillment!, 0) / counted.length) : null;
+            return (
+              <tr key={r.userId}>
+                <th scope="row">
+                  {r.userName}
+                  <span className="sub">{r.schedule ? `${r.schedule.startTime}–${r.schedule.endTime}` : 'Sin turno programado'}</span>
+                </th>
+                {r.days.map((d, i) => {
+                  const cls = d.fulfillment === null ? (d.workedMinutes ? 'extra' : 'off') : `step-${heatStep(d.fulfillment)}`;
+                  return (
+                    <td key={d.day} className={`${days[i].weekday === 1 ? 'week-start' : ''} ${d.day === today ? 'is-today' : ''}`}>
+                      <span className={`heat-cell ${cls}`} tabIndex={0} title={`${d.day.slice(8)}/${d.day.slice(5, 7)} · ${describe(d)}`} aria-label={`${r.userName}, ${d.day.slice(8)}/${d.day.slice(5, 7)}: ${describe(d)}`}>
+                        {d.fulfillment !== null ? d.fulfillment : d.workedMinutes ? '+' : ''}
+                        {d.lateMinutes > 5 && d.fulfillment !== null && <i className="heat-late" aria-hidden="true" />}
+                      </span>
+                    </td>
+                  );
+                })}
+                <td className="heat-avg">{avg === null ? '—' : `${avg}%`}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div className="legend heat-legend">
+        <span><i className="heat-cell step-none" />No inició</span>
+        <span><i className="heat-cell step-1" />Menos del 50%</span>
+        <span><i className="heat-cell step-2" />50–74%</span>
+        <span><i className="heat-cell step-3" />75–89%</span>
+        <span><i className="heat-cell step-4" />90% o más</span>
+        <span><i className="heat-cell extra" />Trabajó sin turno programado</span>
+        <span><i className="heat-late static" />Inició más de 5 min tarde</span>
+      </div>
+    </div>
+  );
+}

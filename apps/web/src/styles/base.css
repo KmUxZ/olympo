@@ -330,3 +330,30 @@ tbody tr:hover { background: rgb(15 157 146 / 4%); }
 .hero div.hero-kpi { cursor: default; }
 .hero div.hero-kpi:hover { transform: none; background: rgb(255 255 255 / 8%); }
 @media (max-width: 900px) { .hero.compact { grid-template-columns: 1fr; } .hero.compact .hero-kpis { justify-content: flex-start; } }
+
+/* ───── Semana de un vistazo (mapa de calor) ───── */
+.heat-wrap { padding: var(--space-4); display: grid; gap: var(--space-3); overflow-x: auto; }
+table.heat { width: auto; border-collapse: separate; border-spacing: 3px; font-size: var(--text-xs); }
+table.heat th, table.heat td { padding: 0; border: 0; background: none; text-align: center; vertical-align: middle; }
+table.heat thead th { color: var(--color-text-muted); font-weight: 600; min-width: 34px; padding-bottom: 4px; line-height: 1.2; }
+table.heat thead th span { display: block; font-size: 0.625rem; font-weight: 400; }
+table.heat thead th:first-child, table.heat tbody th { text-align: left; white-space: nowrap; padding-right: var(--space-3); font-size: var(--text-sm); color: var(--color-text); }
+table.heat tbody th .sub { display: block; font-weight: 400; font-size: var(--text-xs); color: var(--color-text-muted); }
+table.heat tbody tr:hover { background: none; }
+table.heat .week-start { padding-left: 8px; }
+table.heat thead th.is-today { color: var(--color-sidebar-active-text); font-weight: 800; }
+.heat-cell { position: relative; display: grid; place-items: center; width: 34px; height: 30px; border-radius: 7px; font-weight: 700; font-variant-numeric: tabular-nums; color: #063b36; transition: transform 0.15s var(--ease), box-shadow 0.15s; animation: rise 0.4s var(--ease) both; }
+.heat-cell:hover, .heat-cell:focus-visible { transform: scale(1.12); box-shadow: var(--shadow-md); z-index: 2; outline: none; }
+td.is-today .heat-cell { box-shadow: 0 0 0 2px var(--brand-obsidian); }
+.heat-cell.off { background: var(--color-surface-alt); }
+.heat-cell.extra { background: var(--color-surface); box-shadow: inset 0 0 0 1.5px var(--color-border-strong); color: var(--color-text-muted); }
+.heat-cell.step-none { background: var(--color-danger-bg); color: var(--color-danger); box-shadow: inset 0 0 0 1.5px #f2b8b3; }
+.heat-cell.step-1 { background: #d6f0ed; }
+.heat-cell.step-2 { background: #a3ddd6; }
+.heat-cell.step-3 { background: #55c0b5; }
+.heat-cell.step-4 { background: #0b7f77; color: #fff; }
+.heat-late { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--state-pausa); box-shadow: 0 0 0 1.5px #fff; }
+.heat-late.static { position: static; display: inline-block; width: 8px; height: 8px; border: 0; }
+.heat-avg { font-size: var(--text-sm) !important; font-weight: 700; padding-left: var(--space-3) !important; font-variant-numeric: tabular-nums; }
+.heat-legend .heat-cell { width: 16px; height: 14px; border-radius: 4px; animation: none; border: 0; }
+.heat-legend .heat-cell:hover { transform: none; box-shadow: none; }

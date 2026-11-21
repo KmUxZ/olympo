@@ -6,6 +6,8 @@ import { Badge, Empty, ErrorNote, Field, FormModal, Loading, PageHero } from '..
 import { ScheduleFields, toScheduleValue } from '../components/ScheduleFields';
 import type { ScheduleValue } from '../components/ScheduleFields';
 import { ShiftDetailModal } from '../components/ShiftDetail';
+import { AttendanceHeatmap } from '../components/charts';
+import type { AttendanceRow } from '../components/charts';
 
 interface User { id: string; name: string; role: string; status: string; teamName: string | null }
 interface Schedule { userId: string; weekdays: number[]; startTime: string; endTime: string }
@@ -19,9 +21,32 @@ export function Shifts() {
   const recentPath = useMemo(() => `/api/argos/shifts?limit=300&from=${encodeURIComponent(new Date(Date.now() - 7 * 86400_000).toISOString())}`, []);
   const recent = useApi<{ shifts: { status: string; durationMinutes: number | null }[] }>(recentPath, 60_000);
   const recentShifts = recent.data?.shifts ?? [];
+  const [weeks, setWeeks] = useState(14);
+  const attendance = useApi<{ days: { key: string; weekday: number }[]; rows: AttendanceRow[]; today: string }>(`/api/argos/reports/attendance?days=${weeks}`, 120_000);
   return (
     <>
       <PageHero kpis={[{ label: 'En curso ahora', value: recentShifts.filter((s) => s.status === 'active').length }, { label: 'Turnos · 7 días', value: recentShifts.length }, { label: 'Horas · 7 días', value: fmtMinutes(recentShifts.reduce((n, s) => n + (s.durationMinutes ?? 0), 0)) }]} title="Turnos" subtitle="Turnos realizados con su resumen y la programación semanal de cada persona." />
+      <div className="card">
+        <div className="card-head">
+          <div>
+            <h2>Semana de un vistazo</h2>
+            <span className="xs muted">Qué parte del turno programado estuvo en turno cada persona, día a día. El número es el porcentaje.</span>
+          </div>
+          <select aria-label="Periodo" value={weeks} onChange={(e) => setWeeks(Number(e.target.value))} style={{ width: 190 }}>
+            <option value={14}>Últimas 2 semanas</option>
+            <option value={28}>Últimas 4 semanas</option>
+          </select>
+        </div>
+        {!attendance.data ? (attendance.error ? <ErrorNote error={attendance.error} /> : <Loading />) : attendance.data.rows.length ? (
+          <AttendanceHeatmap days={attendance.data.days} rows={attendance.data.rows} today={attendance.data.today} />
+        ) : (
+          <Empty>No hay vendedoras activas.</Empty>
+        )}
+        <div className="card-pad small muted" style={{ borderTop: '1px solid var(--color-border)' }}>
+          Mide tiempo en turno frente al turno programado, no desempeño. Para los días pasados se usa la programación actual de cada persona.
+        </div>
+      </div>
+
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'historial'} onClick={() => setTab('historial')}>Historial</button>
         <button role="tab" aria-selected={tab === 'programacion'} onClick={() => setTab('programacion')}>Programación</button>
