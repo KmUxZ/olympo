@@ -10,6 +10,7 @@ import { catalogRoutes } from './argos/catalog.routes.ts';
 import { shiftRoutes } from './argos/shifts.routes.ts';
 import { dashboardRoutes } from './argos/dashboard.routes.ts';
 import { incidentRoutes } from './argos/incidents.routes.ts';
+import { pancakeRoutes } from './argos/pancake.routes.ts';
 import { startJobs } from './argos/jobs.ts';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' }, bodyLimit: 1_048_576 });
@@ -32,6 +33,7 @@ catalogRoutes(app);
 shiftRoutes(app);
 dashboardRoutes(app);
 incidentRoutes(app);
+pancakeRoutes(app);
 
 // En producción el servidor entrega también la plataforma web ya compilada.
 if (existsSync(config.webDist)) {

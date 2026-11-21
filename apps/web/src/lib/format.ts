@@ -46,6 +46,13 @@ export function fmtMinutes(min: number | null | undefined): string {
   return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`;
 }
 
+export function fmtSeconds(sec: number | null | undefined): string {
+  if (sec == null) return '—';
+  if (sec < 60) return `${Math.round(sec)} s`;
+  if (sec < 3600) return `${Math.round(sec / 60)} min`;
+  return `${Math.floor(sec / 3600)} h ${String(Math.round((sec % 3600) / 60)).padStart(2, '0')} min`;
+}
+
 export function ago(v: When, now = Date.now()): string {
   const d = toDate(v);
   if (!d) return '—';

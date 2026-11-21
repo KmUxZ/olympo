@@ -113,3 +113,15 @@ Nunca lee qué tecla se pulsó, texto, formularios, portapapeles ni direcciones 
 - Comparten `core/`: empresas, usuarios, roles, sesiones y auditoría.
 - Las métricas de resultado entrarán como **eventos verificables** de cada plataforma (mensaje enviado, venta, entrega),
   asociados a persona, línea y turno. Argos los mostrará junto a la actividad, sin mezclarlos ni inferirlos.
+
+## 8. Integración con Pancake (implementada)
+
+- Cada **línea** de Argos se conecta a una **página** de Pancake con su identificador y su token de página
+  (Configuración → Integración con Pancake). El token se valida, se guarda cifrado y nunca se devuelve.
+- Cada usuario de Pancake se **empareja** con una cuenta de Argos.
+- Cada 5 minutos se consulta `GET /pages/{page_id}/statistics/users` y se guardan, por hora, línea y usuario:
+  mensajes atendidos, conversaciones distintas, comentarios, teléfonos captados y tiempo medio de respuesta.
+- El dashboard muestra por vendedora los mensajes atendidos hoy y su respuesta media, con la hora del último dato.
+- Límites: la granularidad es de una hora; el tiempo medio diario es una media ponderada por mensajes;
+  las horas se interpretan en la zona horaria de la empresa (debe coincidir con la de la página en Pancake).
+- Pendiente: ventas/pedidos, vista por línea y por rango de fechas (módulo Reportes), y webhooks para tiempo real.

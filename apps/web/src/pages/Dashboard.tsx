@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi, useNow } from '../lib/api';
-import { ago, BREAK_LABEL, fmtMinutes, fmtTime, INCIDENT_LABEL, INCIDENT_STATUS, LIVE_STATE, scheduleText } from '../lib/format';
+import { ago, BREAK_LABEL, fmtSeconds, fmtMinutes, fmtTime, INCIDENT_LABEL, INCIDENT_STATUS, LIVE_STATE, scheduleText } from '../lib/format';
 import { Badge, Empty, ErrorNote, Freshness, Loading, PageHead, StatePill } from '../components/ui';
 import { ShiftDetailModal } from '../components/ShiftDetail';
 
@@ -24,6 +24,7 @@ export function Dashboard() {
   // "Hace X" se calcula con el reloj del servidor para que no dependa del reloj de este equipo.
   const now = localNow + (new Date(data.serverTime).getTime() - (updatedAt ?? localNow));
   const c = data.counts;
+  const hasChannel = data.channel?.connectedLines > 0;
 
   return (
     <>
@@ -48,12 +49,19 @@ export function Dashboard() {
       )}
 
       <div className="card">
-        <div className="card-head"><h2>Vendedoras</h2></div>
+        <div className="card-head">
+          <h2>Vendedoras</h2>
+          {hasChannel && (
+            <span className={`xs ${data.channel.errors ? 'fresh stale' : 'muted'}`}>
+              Pancake: {data.channel.errors ? `${data.channel.errors} línea(s) con error · ` : ''}{data.channel.lastSyncAt ? `datos de ${ago(data.channel.lastSyncAt, now)}` : 'pendiente de primera sincronización'}
+            </span>
+          )}
+        </div>
         {data.sellers.length ? (
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Vendedora</th><th>Estado</th><th>Herramienta reciente</th><th>Último dato</th><th>Turno de hoy</th><th>Línea</th><th>Novedades</th><th></th></tr>
+                <tr><th>Vendedora</th><th>Estado</th><th>Herramienta reciente</th><th>Último dato</th><th>Turno de hoy</th>{hasChannel && <th>Atención hoy · Pancake</th>}<th>Línea</th><th>Novedades</th><th></th></tr>
               </thead>
               <tbody>
                 {data.sellers.map((s: Row) => (
@@ -86,6 +94,16 @@ export function Dashboard() {
                         </>
                       ) : '—'}
                     </td>
+                    {hasChannel && (
+                      <td className="nowrap">
+                        {s.channel ? (
+                          <>
+                            {s.channel.inbox} mensajes atendidos
+                            <span className="sub">Respuesta media {fmtSeconds(s.channel.avgResponseSeconds)}</span>
+                          </>
+                        ) : <span className="muted">Sin datos hoy</span>}
+                      </td>
+                    )}
                     <td>{s.lines.length ? s.lines.map((l) => l.label).join(', ') : <span className="muted">Sin línea</span>}</td>
                     <td>{s.openIncidents > 0 ? <Badge tone="danger">{s.openIncidents} abierta{s.openIncidents > 1 ? 's' : ''}</Badge> : '—'}</td>
                     <td>{s.shift && <button className="btn sm" onClick={() => setOpenShift(s.shift!.id)}>Ver turno</button>}</td>
@@ -158,4 +176,5 @@ interface Row {
   breakMinutes: number;
   lines: { id: string; label: string }[];
   openIncidents: number;
+  channel: { inbox: number; conversations: number; avgResponseSeconds: number | null; fetchedAt: string } | null;
 }

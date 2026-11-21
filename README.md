@@ -60,6 +60,7 @@ Muestra una contraseña temporal que se cambia en el primer inicio de sesión.
 | `DATABASE_URL` | vacío (PGlite en `data/`) | Conexión a PostgreSQL |
 | `DATA_DIR` | `./data` | Carpeta de la base embebida |
 | `WEB_ORIGINS` | `http://localhost:5173` | Orígenes web permitidos |
+| `OLYMPO_SECRET_KEY` | se genera en `data/secret.key` | Clave (32 bytes, base64) que cifra los tokens de integraciones. Obligatoria en producción |
 | `API_URL` / `WEB_PORT` | `http://127.0.0.1:4000` / `5173` | Solo desarrollo web |
 
 ## Identidad visual
