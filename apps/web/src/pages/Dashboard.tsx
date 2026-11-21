@@ -4,6 +4,7 @@ import { useApi, useNow } from '../lib/api';
 import { ago, BREAK_LABEL, fmtSeconds, fmtMinutes, fmtTime, INCIDENT_LABEL, INCIDENT_STATUS, LIVE_STATE, scheduleText } from '../lib/format';
 import { Badge, Empty, ErrorNote, Freshness, Loading, PageHead, StatePill } from '../components/ui';
 import { ShiftDetailModal } from '../components/ShiftDetail';
+import { Icon } from '../components/Icon';
 
 const FEED_TEXT: Record<string, (detail: string) => string> = {
   turno_inicio: () => 'inició su turno',
@@ -36,13 +37,13 @@ export function Dashboard() {
       </PageHead>
 
       <div className="stats">
-        <div className="card stat"><b>{c.enTurno} <span className="small muted">de {c.total}</span></b><span>En turno</span></div>
-        <div className="card stat"><b>{c.actividad_observada}</b><span>Actividad observada</span></div>
-        <div className="card stat"><b>{c.sin_actividad_observada}</b><span>Sin actividad observada</span></div>
-        <div className="card stat"><b>{c.en_pausa}</b><span>En pausa</span></div>
-        <div className="card stat"><b>{c.sin_senal}</b><span>Sin señal</span></div>
-        <div className="card stat"><b>{c.novedadesAbiertas}</b><span>Novedades abiertas</span></div>
-        <div className="card stat"><b>{counts.data?.pendingToday ?? '—'}</b><span>Tareas pendientes hoy</span></div>
+        <Stat icon="user" tone="accent" value={<>{c.enTurno} <span className="small muted">de {c.total}</span></>} label="En turno" />
+        <Stat icon="pulse" value={c.actividad_observada} label="Actividad observada" />
+        <Stat icon="eye" value={c.sin_actividad_observada} label="Sin actividad observada" />
+        <Stat icon="pause" tone={c.en_pausa ? 'warn' : ''} value={c.en_pausa} label="En pausa" />
+        <Stat icon="signal" tone={c.sin_senal ? 'alert' : ''} value={c.sin_senal} label="Sin señal" />
+        <Stat icon="note" tone={c.novedadesAbiertas ? 'alert' : ''} value={c.novedadesAbiertas} label="Novedades abiertas" />
+        <Stat icon="calendar" value={counts.data?.pendingToday ?? '—'} label="Tareas pendientes hoy" />
       </div>
 
       {alerts.data && alerts.data.alerts.length > 0 && (
@@ -131,6 +132,8 @@ export function Dashboard() {
         </div>
       </div>
 
+      <HourlyChart hourly={data.hourly} now={new Date(now)} />
+
       <div className="grid cols-2">
         <div className="card">
           <div className="card-head"><h2>Novedades abiertas</h2><Link to="/novedades" className="small">Ver todas</Link></div>
@@ -169,6 +172,64 @@ export function Dashboard() {
 
       {openShift && <ShiftDetailModal shiftId={openShift} onClose={() => setOpenShift(null)} onChanged={() => void reload()} />}
     </>
+  );
+}
+
+function Stat({ icon, value, label, tone = '' }: { icon: string; value: React.ReactNode; label: string; tone?: string }) {
+  return (
+    <div className={`card stat with-icon ${tone}`}>
+      <span className="stat-icon"><Icon name={icon} size={20} /></span>
+      <b>{value}</b>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+/**
+ * Actividad observada del equipo por hora (hoy). Una sola serie: no necesita leyenda.
+ * Cada barra admite foco y muestra su valor; debajo hay una tabla equivalente para lectores de pantalla.
+ */
+function HourlyChart({ hourly, now }: { hourly: { hour: number; observedMinutes: number }[]; now: Date }) {
+  const withData = hourly.filter((h) => h.observedMinutes > 0);
+  if (!withData.length) {
+    return (
+      <div className="card">
+        <div className="card-head"><h2>Actividad observada por hora</h2><span className="xs muted">Hoy</span></div>
+        <div className="empty">Aún no hay actividad registrada hoy. Aparecerá cuando alguien trabaje en sus herramientas con el turno iniciado.</div>
+      </div>
+    );
+  }
+  // Se muestra desde la primera hora con datos (mínimo 2 h antes) hasta la hora actual.
+  const first = Math.max(0, Math.min(...withData.map((h) => h.hour)) - 1);
+  const last = Math.max(now.getHours(), Math.max(...withData.map((h) => h.hour)));
+  const shown = hourly.filter((h) => h.hour >= first && h.hour <= last);
+  const max = Math.max(...shown.map((h) => h.observedMinutes));
+  const top = Math.max(10, Math.ceil(max / 10) * 10);
+  const label = (h: number) => `${String(h).padStart(2, '0')}:00`;
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h2>Actividad observada por hora</h2>
+        <span className="xs muted">Hoy · minutos-persona con teclado o ratón en herramientas autorizadas</span>
+      </div>
+      <div className="chart">
+        <div className="chart-scale"><span>{top} min</span></div>
+        <div className="chart-plot" role="img" aria-label={`Minutos con actividad observada por hora, de ${label(first)} a ${label(last)}`}>
+          {shown.map((h) => (
+            <div className="chart-col" key={h.hour} tabIndex={0} aria-label={`${label(h.hour)}: ${h.observedMinutes} minutos`}>
+              <span className="chart-tip">{label(h.hour)} · {h.observedMinutes} min</span>
+              <div className="chart-bar" style={{ height: `${(h.observedMinutes / top) * 100}%` }} />
+            </div>
+          ))}
+        </div>
+        <div className="chart-axis" aria-hidden="true">{shown.map((h) => <span key={h.hour}>{shown.length > 14 && h.hour % 2 ? '' : String(h.hour).padStart(2, '0')}</span>)}</div>
+        <table className="sr-only">
+          <caption>Minutos con actividad observada por hora</caption>
+          <thead><tr><th>Hora</th><th>Minutos</th></tr></thead>
+          <tbody>{shown.map((h) => <tr key={h.hour}><td>{label(h.hour)}</td><td>{h.observedMinutes}</td></tr>)}</tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 

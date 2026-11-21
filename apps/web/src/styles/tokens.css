@@ -2,7 +2,7 @@
  * TOKENS DE DISEÑO — único lugar donde viven colores, tipografías, radios y espaciados.
  * Paleta de la "Propuesta visual 01" de OLYMPO:
  *   Obsidian #111827 · Electric Blue #386BFF (ecosistema) · Cloud #F7F8FC · Slate #64748B · Argos Teal #0F9D92 (producto)
- * Pendiente de la identidad definitiva: tipografía de marca y archivos de logotipo (ver Layout.tsx).
+ * Los logotipos se dibujan en components/brand.tsx (aproximación en SVG hasta tener los archivos oficiales).
  * Ninguna pantalla usa colores ni fuentes directamente: todo cambio de identidad se hace aquí.
  */
 :root {
@@ -13,7 +13,8 @@
   --brand-slate: #64748b;
   --brand-teal: #0f9d92;
 
-  /* Tipografía (provisional: fuente del sistema hasta recibir la tipografía de marca) */
+  /* Tipografía: Montserrat (geométrica, como el logotipo de la propuesta) para títulos y marca; fuente del sistema para texto. */
+  --font-display: "Montserrat Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   --text-xs: 0.75rem;

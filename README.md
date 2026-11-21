@@ -74,8 +74,12 @@ restablecer el acceso de sus administradores. Estos comandos se ejecutan con el 
 
 ## Identidad visual
 
-Es provisional y neutra. Todos los colores, tipografías, radios y espaciados viven en
-`apps/web/src/styles/tokens.css` (y un bloque equivalente al inicio de `apps/extension/ui.css`).
-Aplicar la identidad OLYMPO consiste en cambiar esos valores y el bloque de marca en `apps/web/src/Layout.tsx`.
+Sigue la "Propuesta visual 01" de OLYMPO (Obsidian, Electric Blue, Cloud, Slate y Argos Teal).
+
+- **Colores, tipografías, radios y espaciados:** `apps/web/src/styles/tokens.css` (y el bloque `:root` de `apps/extension/ui.css`).
+- **Logotipos:** `apps/web/src/components/brand.tsx`. Son una aproximación en SVG dibujada a partir de la propuesta;
+  al tener los archivos oficiales se sustituyen ahí (y en `apps/extension/icons/`, `popup.html` y `apps/web/public/favicon.svg`).
+- **Tipografía:** Montserrat para títulos y marca, alojada localmente (sin servicios externos).
+- **Iconos:** `apps/web/src/components/Icon.tsx`.
 
 Más detalle en [docs/argos-mvp.md](docs/argos-mvp.md).

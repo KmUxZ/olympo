@@ -22,6 +22,7 @@ import { Agenda } from './pages/Agenda';
 import { Messages } from './pages/Messages';
 import { Coaching } from './pages/Coaching';
 import { Quality } from './pages/Quality';
+import '@fontsource-variable/montserrat/wght.css';
 import './styles/base.css';
 
 function Only({ roles, children }: { roles: Role[]; children: React.ReactNode }) {

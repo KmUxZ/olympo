@@ -101,6 +101,16 @@ export function dashboardRoutes(app: FastifyInstance): void {
       ),
     ]);
 
+    // Minutos-persona con actividad observada por hora del día (hora local de la empresa).
+    const hourlyRows = await db.query(
+      `SELECT extract(hour FROM (a.minute_start AT TIME ZONE $4))::int AS hour, count(DISTINCT (a.shift_id, a.minute_start))::int AS minutes
+         FROM argos_activity_minutes a
+        WHERE a.company_id = $1 AND a.minute_start >= $2::timestamptz AND a.active_seconds > 0 AND a.user_id ${inIds(3)}
+        GROUP BY 1`,
+      [ctx.companyId, startOfLocalDay(ctx.company.timezone, now).toISOString(), userIds, ctx.company.timezone],
+    );
+    const hourly = Array.from({ length: 24 }, (_, hour) => ({ hour, observedMinutes: hourlyRows.rows.find((r) => r.hour === hour)?.minutes ?? 0 }));
+
     const counts: Record<LiveState, number> = { actividad_observada: 0, sin_actividad_observada: 0, en_pausa: 0, sin_senal: 0, fuera_de_turno: 0 };
     let notStarted = 0;
 
@@ -179,6 +189,7 @@ export function dashboardRoutes(app: FastifyInstance): void {
 
     return {
       serverTime: now,
+      hourly,
       channel: { provider: 'pancake', connectedLines: channelSync.lines, lastSyncAt: channelSync.last_sync_at, errors: channelSync.errors },
       settings: { staleSeconds, activityWindowMinutes },
       counts: { ...counts, total: users.length, enTurno: users.length - counts.fuera_de_turno, sinIniciarProgramadas: notStarted, novedadesAbiertas: incidents.rows.length },

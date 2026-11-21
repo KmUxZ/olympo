@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from './auth';
 import type { Role } from './auth';
 import { api } from './lib/api';
 import { ROLE_LABEL } from './lib/format';
+import { ArgosLogo, OlympoMark } from './components/brand';
+import { Icon } from './components/Icon';
 
 interface Item {
   label: string;
+  icon: string;
   to?: string; // sin ruta = módulo previsto, aún no disponible
   roles?: Role[];
   badge?: 'openAlerts' | 'unreadMessages' | 'pendingToday';
@@ -24,26 +27,30 @@ const NAV: { group: string; items: Item[] }[] = [
   {
     group: 'Operación',
     items: [
-      { label: 'Agenda', to: '/agenda', badge: 'pendingToday' },
-      { label: 'Dashboard', to: '/dashboard', roles: ['admin', 'supervisor'] },
-      { label: 'Mi turno', to: '/mi-turno', roles: ['seller'] },
-      { label: 'Novedades', to: '/novedades' },
-      { label: 'Turnos', to: '/turnos', roles: ['admin', 'supervisor'] },
-      { label: 'Líneas', to: '/lineas', roles: ['admin', 'supervisor'] },
-      { label: 'Reportes', to: '/reportes', roles: ['admin', 'supervisor'] },
+      { label: 'Dashboard', icon: 'home', to: '/dashboard', roles: ['admin', 'supervisor'] },
+      { label: 'Mi turno', icon: 'home', to: '/mi-turno', roles: ['seller'] },
+      { label: 'Agenda', icon: 'calendar', to: '/agenda', badge: 'pendingToday' },
+      { label: 'Novedades', icon: 'note', to: '/novedades' },
+      { label: 'Turnos', icon: 'clock', to: '/turnos', roles: ['admin', 'supervisor'] },
+      { label: 'Líneas', icon: 'phone', to: '/lineas', roles: ['admin', 'supervisor'] },
+      { label: 'Reportes', icon: 'chart', to: '/reportes', roles: ['admin', 'supervisor'] },
     ],
   },
   {
     group: 'Equipo',
-    items: [{ label: 'Acompañamiento', to: '/acompanamiento' }, { label: 'Mensajes', to: '/mensajes', badge: 'unreadMessages' }, { label: 'Calidad', to: '/calidad' }],
+    items: [
+      { label: 'Acompañamiento', icon: 'target', to: '/acompanamiento' },
+      { label: 'Mensajes', icon: 'message', to: '/mensajes', badge: 'unreadMessages' },
+      { label: 'Calidad', icon: 'star', to: '/calidad' },
+    ],
   },
   {
     group: 'Administración',
     items: [
-      { label: 'Alarmas', to: '/alarmas', roles: ['admin', 'supervisor'], badge: 'openAlerts' },
-      { label: 'Usuarios', to: '/usuarios', roles: ['admin'] },
-      { label: 'Auditoría', to: '/auditoria', roles: ['admin'] },
-      { label: 'Configuración', to: '/configuracion', roles: ['admin'] },
+      { label: 'Alarmas', icon: 'bell', to: '/alarmas', roles: ['admin', 'supervisor'], badge: 'openAlerts' },
+      { label: 'Usuarios', icon: 'users', to: '/usuarios', roles: ['admin'] },
+      { label: 'Auditoría', icon: 'shield', to: '/auditoria', roles: ['admin'] },
+      { label: 'Configuración', icon: 'settings', to: '/configuracion', roles: ['admin'] },
     ],
   },
 ];
@@ -84,6 +91,8 @@ function useCounts(enabled: boolean): Counts | null {
   return counts;
 }
 
+const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
+
 export function Layout() {
   const { me, logout } = useAuth();
   const counts = useCounts(Boolean(me));
@@ -93,14 +102,21 @@ export function Layout() {
     await api('POST', '/api/platform/support/exit').catch(() => {});
     window.location.assign('/plataforma');
   }
+  const navLink = (item: Item) => (
+    <NavLink key={item.label} to={item.to!}>
+      <span className="nav-label"><Icon name={item.icon} />{item.label}</span>
+      {item.badge && counts && counts[item.badge] > 0 && (
+        <em className="count" aria-label={`${counts[item.badge]} pendientes`}>{counts[item.badge]}</em>
+      )}
+    </NavLink>
+  );
+
   return (
     <div className="shell">
       <aside className="sidebar">
-        {/* Marca en texto con los colores de la propuesta. Sustituir por el logotipo SVG de Argos cuando esté exportado. */}
-        <div className="brand">
-          <strong>Argos</strong>
-          <span>OLYMPO · {me.company.name}</span>
-        </div>
+        <Link to="/" className="brand" aria-label="Argos, inicio">
+          <ArgosLogo size={30} />
+        </Link>
         <nav className="nav" aria-label="Principal">
           {NAV.map(({ group, items }) => {
             const visible = items.filter((i) => !i.roles || i.roles.includes(role));
@@ -109,16 +125,9 @@ export function Layout() {
               <div className="nav-group" key={group}>
                 <span>{group}</span>
                 {visible.map((item) =>
-                  item.to ? (
-                    <NavLink key={item.label} to={item.to}>
-                      {item.label}
-                      {item.badge && counts && counts[item.badge] > 0 && (
-                        <em className="count" aria-label={`${counts[item.badge]} pendientes`}>{counts[item.badge]}</em>
-                      )}
-                    </NavLink>
-                  ) : (
+                  item.to ? navLink(item) : (
                     <div key={item.label} className="soon" aria-disabled="true">
-                      {item.label} <em>Próximamente</em>
+                      <span className="nav-label"><Icon name={item.icon} />{item.label}</span> <em>Próximamente</em>
                     </div>
                   ),
                 )}
@@ -128,27 +137,50 @@ export function Layout() {
           {me.user.isPlatformAdmin && (
             <div className="nav-group">
               <span>Plataforma</span>
-              <NavLink to="/plataforma">Empresas</NavLink>
+              {navLink({ label: 'Empresas', icon: 'building', to: '/plataforma' })}
             </div>
           )}
           <div className="nav-group">
             <span>Transparencia</span>
-            <NavLink to="/que-se-registra">Qué se registra</NavLink>
+            {navLink({ label: 'Qué se registra', icon: 'eye', to: '/que-se-registra' })}
           </div>
         </nav>
         <div className="sidebar-foot">
-          <div>
-            <div style={{ color: 'var(--color-sidebar-strong)', fontWeight: 600 }}>{me.user.name}</div>
-            <div className="xs" style={{ color: 'var(--color-sidebar-muted)' }}>
-              {ROLE_LABEL[role]}
-            </div>
-          </div>
-          <button className="btn ghost sm" onClick={() => void logout()}>
-            Cerrar sesión
-          </button>
+          <OlympoMark size={18} />
+          <span>Parte de <strong>OLYMPO</strong></span>
         </div>
       </aside>
+
       <div className="main">
+        <header className="topbar">
+          <div className="topbar-company">
+            <strong>{me.company.name}</strong>
+            {me.company.isDemo && <span className="badge warn plain">Demo</span>}
+          </div>
+          <div className="topbar-actions">
+            {role !== 'seller' && (
+              <Link to="/alarmas" className="icon-btn" aria-label={`Alarmas${counts?.openAlerts ? `: ${counts.openAlerts} abiertas` : ''}`}>
+                <Icon name="bell" size={20} />
+                {Boolean(counts?.openAlerts) && <em className="dot">{counts!.openAlerts}</em>}
+              </Link>
+            )}
+            <Link to="/mensajes" className="icon-btn" aria-label={`Mensajes${counts?.unreadMessages ? `: ${counts.unreadMessages} sin leer` : ''}`}>
+              <Icon name="message" size={20} />
+              {Boolean(counts?.unreadMessages) && <em className="dot">{counts!.unreadMessages}</em>}
+            </Link>
+            <div className="topbar-user">
+              <span className="avatar" aria-hidden="true">{initials(me.user.name)}</span>
+              <div>
+                <div className="topbar-name">{me.user.name}</div>
+                <div className="xs muted">{ROLE_LABEL[role]}</div>
+              </div>
+            </div>
+            <button className="icon-btn" onClick={() => void logout()} aria-label="Cerrar sesión" title="Cerrar sesión">
+              <Icon name="logout" size={20} />
+            </button>
+          </div>
+        </header>
+
         {me.support && (
           <div className="demo-banner" role="alert" style={{ background: 'var(--color-info-bg)', color: 'var(--color-info)' }}>
             <strong>Modo soporte en {me.company.name}.</strong> Estás viendo los datos de un cliente con su permiso; todo lo que hagas queda en su auditoría.{' '}
