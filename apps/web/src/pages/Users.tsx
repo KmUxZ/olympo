@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useAuth } from '../auth';
 import { api, useApi } from '../lib/api';
-import { ROLE_LABEL, scheduleText } from '../lib/format';
+import { fmtDate, ROLE_LABEL, scheduleText } from '../lib/format';
 import { Badge, Empty, ErrorNote, Field, FormModal, Loading, Modal, PageHead } from '../components/ui';
 import { ScheduleFields, toScheduleValue } from '../components/ScheduleFields';
 import type { ScheduleValue } from '../components/ScheduleFields';
 
-interface User { id: string; name: string; email: string; role: string; status: string; teamId: string | null; teamName: string | null; supervisorName: string | null; mustChangePassword: boolean; isDemo: boolean }
+interface User { id: string; name: string; email: string; role: string; status: string; teamId: string | null; teamName: string | null; supervisorName: string | null; mustChangePassword: boolean; isDemo: boolean; consentAt: string | null }
 interface Team { id: string; name: string; supervisorId: string | null; supervisorName: string | null; members: number }
 interface Line { id: string; label: string; channel: string; identifier: string; active: boolean; assignedUserId: string | null; assignedUserName: string | null }
 interface Schedule { userId: string; weekdays: number[]; startTime: string; endTime: string }
@@ -57,6 +57,7 @@ export function Users() {
                   <td>
                     {u.status === 'active' ? <Badge tone="ok">Activa</Badge> : <Badge>Desactivada</Badge>}
                     {u.mustChangePassword && u.status === 'active' && <span className="sub">Contraseña temporal pendiente</span>}
+                    {u.role === 'seller' && u.status === 'active' && <span className="sub">{u.consentAt ? `Aceptó el aviso de registro el ${fmtDate(u.consentAt)}` : 'Aviso de registro sin aceptar'}</span>}
                   </td>
                   <td className="nowrap">
                     <button className="btn sm" onClick={() => setEditing(u)}>Editar</button>{' '}

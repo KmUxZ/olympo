@@ -15,6 +15,12 @@ export const config = {
   sessionDays: 14,
 };
 
+/**
+ * Versión del aviso "Qué se registra". Al cambiar lo que la extensión registra hay que subirla:
+ * todas las personas deberán aceptar de nuevo antes de iniciar turno.
+ */
+export const CONSENT_VERSION = '2026-11';
+
 /** Ajustes por empresa (se guardan en core_companies.settings; aquí están los valores por defecto). */
 export const DEFAULT_SETTINGS = {
   /** Días que se conservan los registros de actividad por minuto. Los resúmenes de turno se conservan. */

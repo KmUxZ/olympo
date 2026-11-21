@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { CONSENT_VERSION } from '../config.ts';
 import { db, inIds } from '../db/db.ts';
 import { assertCanSeeUser, auditBy, badRequest, forbidden, guard, HttpError, notFound, parse, visibleUserIds } from '../core/http.ts';
 import type { Ctx } from '../core/http.ts';
@@ -33,6 +34,11 @@ function summaryFor(ctx: Ctx, ownerId: string, summary: any): any {
   if (!summary || ctx.role !== 'supervisor' || ownerId === ctx.userId) return summary;
   const { keyCount: _k, clickCount: _c, scrollCount: _s, ...rest } = summary;
   return { ...rest, tools: (summary.tools ?? []).map(({ keyCount: _tk, clickCount: _tc, ...tool }: any) => tool), countsHidden: true };
+}
+
+async function consentOf(userId: string): Promise<{ version: string; accepted: boolean; acceptedAt: Date | null }> {
+  const { rows } = await db.query(`SELECT accepted_at FROM argos_consents WHERE user_id = $1 AND version = $2`, [userId, CONSENT_VERSION]);
+  return { version: CONSENT_VERSION, accepted: rows.length > 0, acceptedAt: rows[0]?.accepted_at ?? null };
 }
 
 const shiftView = (s: ShiftRow) => ({ id: s.id, status: s.status, startedAt: s.started_at, endedAt: s.ended_at, lastSyncAt: s.last_sync_at });
@@ -82,13 +88,31 @@ export function shiftRoutes(app: FastifyInstance): void {
       lines: lines.rows,
       schedule: schedule.rows[0] ?? null,
       breakReasons: BREAK_REASONS,
+      consent: await consentOf(ctx.userId),
     };
+  });
+
+  /** La persona acepta el aviso de qué se registra. Sin esta aceptación no se puede iniciar turno. */
+  app.post('/api/argos/consent', guard(), async (req) => {
+    const ctx = req.ctx;
+    const body = parse(z.object({ version: z.string().max(20) }), req.body);
+    if (body.version !== CONSENT_VERSION) throw badRequest('El aviso cambió. Vuelve a abrir la extensión para leer la versión actual.', 'aviso_desactualizado');
+    if (ctx.support) throw forbidden();
+    const { count } = await db.query(
+      `INSERT INTO argos_consents (company_id, user_id, version, client, ip, user_agent) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (user_id, version) DO NOTHING`,
+      [ctx.companyId, ctx.userId, CONSENT_VERSION, ctx.client, ctx.ip, String(req.headers['user-agent'] ?? '').slice(0, 300)],
+    );
+    if (count) await auditBy(ctx, { action: 'consentimiento.aceptado', entityType: 'usuario', entityId: ctx.userId, summary: `Aceptó el aviso de registro de actividad (versión ${CONSENT_VERSION})`, metadata: { version: CONSENT_VERSION, client: ctx.client } });
+    return { consent: await consentOf(ctx.userId) };
   });
 
   app.post('/api/argos/shifts/start', guard(), async (req) => {
     const ctx = req.ctx;
     const existing = await activeShiftOf(ctx.userId);
     if (existing) return { shift: shiftView(existing), alreadyActive: true };
+    if (!(await consentOf(ctx.userId)).accepted) {
+      throw new HttpError(403, 'consentimiento_requerido', 'Antes de iniciar turno debes leer y aceptar qué registra la extensión.');
+    }
     const lines = await db.query(`SELECT id, label, channel FROM argos_lines WHERE assigned_user_id = $1 AND active ORDER BY label`, [ctx.userId]);
     try {
       const { rows } = await db.query(

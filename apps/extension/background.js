@@ -115,6 +115,7 @@ async function refreshState() {
     lines: remote.lines,
     schedule: remote.schedule,
     breakReasons: remote.breakReasons,
+    consent: remote.consent,
     refreshedAt: Date.now(),
   });
   await applyTracking();
@@ -295,6 +296,10 @@ const actions = {
   },
   async apply() {
     await applyTracking();
+  },
+  async acceptConsent({ version }) {
+    const res = await api('POST', '/api/argos/consent', { version });
+    await patchState({ consent: res.consent });
   },
   async startShift() {
     const res = await api('POST', '/api/argos/shifts/start');

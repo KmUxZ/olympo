@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { DEFAULT_SETTINGS } from '../config.ts';
+import { CONSENT_VERSION, DEFAULT_SETTINGS } from '../config.ts';
 import { db, inIds } from '../db/db.ts';
 import { assertWithinPlan, auditBy, badRequest, guard, notFound, parse, visibleUserIds } from './http.ts';
 import { hashPassword, tempPassword } from './security.ts';
@@ -35,7 +35,8 @@ export function adminRoutes(app: FastifyInstance): void {
     const { rows } = await db.query(
       `SELECT u.id, u.name, u.email, u.role, u.status, u.team_id AS "teamId", u.is_demo AS "isDemo",
               u.must_change_password AS "mustChangePassword", u.created_at AS "createdAt",
-              t.name AS "teamName", s.name AS "supervisorName"
+              t.name AS "teamName", s.name AS "supervisorName",
+              (SELECT k.accepted_at FROM argos_consents k WHERE k.user_id = u.id AND k.version = '${CONSENT_VERSION}') AS "consentAt"
          FROM core_users u
          LEFT JOIN core_teams t ON t.id = u.team_id
          LEFT JOIN core_users s ON s.id = t.supervisor_id

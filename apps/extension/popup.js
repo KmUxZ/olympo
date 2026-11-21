@@ -108,9 +108,28 @@ function permissionCard(state) {
   );
 }
 
+/** Aviso y aceptación: sin esto no se puede iniciar turno (el servidor también lo exige). */
+function consentCard(state) {
+  if (!state.consent || state.consent.accepted) return null;
+  const box = h('input', { type: 'checkbox', id: 'consent-check', style: 'width:auto' });
+  const accept = h('button', { class: 'primary', disabled: true, onclick: () => send({ type: 'acceptConsent', version: state.consent.version }) }, 'Acepto');
+  box.addEventListener('change', () => (accept.disabled = !box.checked));
+  return h(
+    'div',
+    { class: 'card' },
+    h('strong', {}, 'Antes de empezar: qué registra Argos'),
+    h('span', { class: 'small' }, 'Durante tu turno, y solo en tus herramientas de trabajo, se registra: inicio y fin de turno, tus pausas, y cuántas teclas, clics y segundos de uso hubo por minuto.'),
+    h('span', { class: 'small' }, 'Nunca se registra qué escribes, contraseñas, conversaciones, capturas ni sitios personales. Tampoco nada fuera de turno o en pausa.'),
+    h('a', { class: 'small', href: 'privacy.html', target: '_blank', rel: 'noopener' }, 'Leer el detalle completo'),
+    h('label', { style: 'display:flex;gap:8px;align-items:flex-start;color:var(--text);font-size:13px' }, box, h('span', {}, 'He leído y acepto este registro durante mis turnos.')),
+    accept,
+  );
+}
+
 function idleView(state) {
   const sched = state.schedule;
-  const perm = permissionCard(state);
+  const consent = consentCard(state);
+  const perm = consent ? null : permissionCard(state);
   const summary = state.lastSummary;
   return [
     h('div', {}, h('strong', {}, `Hola, ${state.user?.name ?? ''}`), h('div', { class: 'status muted', style: 'font-weight:400' }, h('span', { class: 'dot' }), 'Sin turno activo: no se registra nada.')),
@@ -121,8 +140,9 @@ function idleView(state) {
       h('span', {}, h('span', { class: 'muted' }, 'Línea: '), state.lines?.length ? state.lines.map((l) => l.label).join(', ') : 'sin asignar'),
       h('span', {}, h('span', { class: 'muted' }, 'Turno programado: '), sched ? `${sched.weekdays.map((d) => DAYS[d]).join(', ')} · ${sched.startTime}–${sched.endTime}` : 'sin programar'),
     ),
+    consent,
     perm,
-    h('button', { class: 'primary', disabled: ui.busy || (Boolean(state.tools?.length) && !state.permissionsOk), onclick: () => send({ type: 'startShift' }) }, 'Iniciar turno'),
+    h('button', { class: 'primary', disabled: ui.busy || Boolean(consent) || (Boolean(state.tools?.length) && !state.permissionsOk), onclick: () => send({ type: 'startShift' }) }, 'Iniciar turno'),
     summary
       ? h(
           'div',
@@ -230,9 +250,9 @@ function render() {
 logoutBtn.addEventListener('click', () => send({ type: 'logout' }));
 chrome.storage.onChanged.addListener((_changes, area) => {
   // No se vuelve a pintar mientras la persona escribe en un formulario abierto.
-  if (area === 'local' && !ui.panel && !ui.busy && document.activeElement?.tagName !== 'INPUT') load();
+  if (area === 'local' && !ui.panel && !ui.busy && document.activeElement?.tagName !== 'INPUT' && !document.getElementById('consent-check')?.checked) load();
 });
-setInterval(() => !ui.panel && !ui.busy && document.activeElement?.tagName !== 'INPUT' && render(), 15000);
+setInterval(() => !ui.panel && !ui.busy && document.activeElement?.tagName !== 'INPUT' && !document.getElementById('consent-check')?.checked && render(), 15000);
 
 await load();
 if (data.auth?.token) chrome.runtime.sendMessage({ type: 'refresh' }).then(load, () => {});

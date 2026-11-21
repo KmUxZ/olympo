@@ -140,3 +140,12 @@ Quien opera OLYMPO tiene un rol aparte (`is_platform_admin`) con el panel **Empr
 hace falta el **modo soporte**: el administrador de la empresa concede acceso por 4 o 24 horas (Configuración → Acceso de soporte),
 puede revocarlo en cualquier momento, y cada entrada y acción queda en la auditoría de esa empresa. Todas las acciones de
 plataforma sobre una empresa (creación, suspensión, límites, restablecimientos) también quedan en su auditoría.
+
+## 10. Consentimiento informado (implementado)
+
+- Antes del primer turno, la extensión muestra qué se registra y qué no, y pide aceptarlo.
+- El servidor rechaza iniciar turno sin esa aceptación (no depende solo de la extensión).
+- Queda constancia por persona: versión del aviso, fecha, IP y cliente, además de una entrada en auditoría.
+- El administrador ve en Usuarios quién ha aceptado y quién no.
+- Si cambia lo que se registra, se sube `CONSENT_VERSION` (apps/server/src/config.ts) y todos deben aceptar de nuevo.
+- Esto es una constancia técnica; el texto y su validez legal deben revisarse con un abogado según el país.
