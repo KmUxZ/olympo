@@ -67,7 +67,14 @@
   --state-sin-actividad: #b3bccb;
   --state-pausa: #e0a030;
   --state-sin-datos: #ffffff;
-  --state-sin-senal: #c2410c;
+  --state-sin-senal: #d1242f;
+  --state-fuera: #e2e6ee;
+  /* Variantes para fondo oscuro (cabeceras): mismos tonos, pasos más claros. */
+  --state-observada-dark: #2ec4b6;
+  --state-sin-actividad-dark: #56637d;
+  --state-pausa-dark: #f0b445;
+  --state-sin-senal-dark: #ff6b7a;
+  --state-fuera-dark: #2a3446;
 
   /* Forma y espacio */
   --radius-sm: 8px;
@@ -78,7 +85,9 @@
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
-  --shadow-sm: 0 1px 2px rgb(17 24 39 / 5%);
+  --shadow-sm: 0 1px 2px rgb(17 24 39 / 4%), 0 2px 8px rgb(17 24 39 / 4%);
+  --shadow-md: 0 2px 4px rgb(17 24 39 / 5%), 0 10px 24px rgb(17 24 39 / 9%);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --shadow-lg: 0 12px 32px rgb(17 24 39 / 18%);
   --sidebar-width: 232px;
 }

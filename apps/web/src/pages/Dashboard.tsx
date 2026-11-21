@@ -1,10 +1,13 @@
 import { useState } from 'react';
+import { useAuth } from '../auth';
 import { Link } from 'react-router-dom';
 import { useApi, useNow } from '../lib/api';
-import { ago, BREAK_LABEL, fmtSeconds, fmtMinutes, fmtTime, INCIDENT_LABEL, INCIDENT_STATUS, LIVE_STATE, scheduleText } from '../lib/format';
-import { Badge, Empty, ErrorNote, Freshness, Loading, PageHead, StatePill } from '../components/ui';
+import { ago, BREAK_LABEL, fmtLongDay, fmtSeconds, fmtMinutes, fmtTime, INCIDENT_LABEL, INCIDENT_STATUS, LIVE_STATE, scheduleText } from '../lib/format';
+import { Badge, Empty, ErrorNote, Freshness, Loading, StatePill } from '../components/ui';
 import { ShiftDetailModal } from '../components/ShiftDetail';
-import { Icon } from '../components/Icon';
+import { Donut, TeamTimeline } from '../components/charts';
+
+const LIVE_KEYS = ['actividad_observada', 'sin_actividad_observada', 'en_pausa', 'sin_senal', 'fuera_de_turno'] as const;
 
 const FEED_TEXT: Record<string, (detail: string) => string> = {
   turno_inicio: () => 'inició su turno',
@@ -15,6 +18,7 @@ const FEED_TEXT: Record<string, (detail: string) => string> = {
 };
 
 export function Dashboard() {
+  const { me } = useAuth();
   const { data, error, loading, updatedAt, reload } = useApi('/api/argos/dashboard', 15_000);
   const alerts = useApi<{ alerts: { id: string; message: string; ackAt: string | null }[] }>('/api/argos/alerts', 20_000);
   const counts = useApi<{ pendingToday: number }>('/api/argos/notifications', 60_000);
@@ -28,23 +32,39 @@ export function Dashboard() {
   const now = localNow + (new Date(data.serverTime).getTime() - (updatedAt ?? localNow));
   const c = data.counts;
   const hasChannel = data.channel?.connectedLines > 0;
+  const timelineRows = (data.sellers as Row[]).map((s) => {
+    const mine = (data.timelines as { userId: string; shiftId: string; status: string; segments: { start: string; end: string; state: string }[] }[]).filter((t) => t.userId === s.user.id);
+    return {
+      key: s.user.id,
+      name: s.user.name,
+      note: LIVE_STATE[s.state]?.label ?? '',
+      segments: mine.flatMap((t) => t.segments),
+      shiftId: (mine.find((t) => t.status === 'active') ?? mine[mine.length - 1])?.shiftId,
+    };
+  });
 
   return (
     <>
-      <PageHead title="Dashboard" subtitle="Estado del equipo en este momento. Se actualiza cada 15 segundos.">
-        <Freshness updatedAt={updatedAt} error={error} />
-        <button className="btn sm" onClick={() => void reload()}>Actualizar</button>
-      </PageHead>
-
-      <div className="stats">
-        <Stat icon="user" tone="accent" value={<>{c.enTurno} <span className="small muted">de {c.total}</span></>} label="En turno" />
-        <Stat icon="pulse" value={c.actividad_observada} label="Actividad observada" />
-        <Stat icon="eye" value={c.sin_actividad_observada} label="Sin actividad observada" />
-        <Stat icon="pause" tone={c.en_pausa ? 'warn' : ''} value={c.en_pausa} label="En pausa" />
-        <Stat icon="signal" tone={c.sin_senal ? 'alert' : ''} value={c.sin_senal} label="Sin señal" />
-        <Stat icon="note" tone={c.novedadesAbiertas ? 'alert' : ''} value={c.novedadesAbiertas} label="Novedades abiertas" />
-        <Stat icon="calendar" value={counts.data?.pendingToday ?? '—'} label="Tareas pendientes hoy" />
-      </div>
+      <section className="hero" aria-label="Resumen del equipo">
+        <div className="hero-main">
+          <span className="live"><i />En vivo · <Freshness updatedAt={updatedAt} error={error} /></span>
+          <h1>Hola, {me?.user.name.split(' ')[0]}</h1>
+          <p>{fmtLongDay(new Date(now))} · {c.enTurno === 0 ? 'nadie en turno todavía' : c.enTurno === 1 ? '1 persona en turno' : `${c.enTurno} personas en turno`} de {c.total}</p>
+          <div className="hero-kpis">
+            <Link to="/novedades" className="hero-kpi"><b>{c.novedadesAbiertas}</b><span>Novedades abiertas</span></Link>
+            <Link to="/alarmas" className="hero-kpi"><b>{alerts.data?.alerts.length ?? '—'}</b><span>Alertas abiertas</span></Link>
+            <Link to="/agenda" className="hero-kpi"><b>{counts.data?.pendingToday ?? '—'}</b><span>Tareas para hoy</span></Link>
+          </div>
+        </div>
+        <div className="hero-viz">
+          <Donut centerValue={c.enTurno} centerLabel="en turno" segments={LIVE_KEYS.map((k) => ({ key: k, label: LIVE_STATE[k].label, value: c[k] }))} />
+          <ul className="hero-legend">
+            {LIVE_KEYS.map((k) => (
+              <li key={k}><i className={`seg-${k}`} /><span>{LIVE_STATE[k].label}</span><strong>{c[k]}</strong></li>
+            ))}
+          </ul>
+        </div>
+      </section>
 
       {alerts.data && alerts.data.alerts.length > 0 && (
         <div className="alert danger" role="status">
@@ -60,7 +80,19 @@ export function Dashboard() {
         </div>
       )}
 
-      <div className="card">
+      <div className="card rise">
+        <div className="card-head">
+          <h2>Línea del día</h2>
+          <span className="xs muted">El turno de hoy de cada persona, sobre el mismo eje de horas</span>
+        </div>
+        {timelineRows.some((r) => r.segments.length) ? (
+          <div className="card-pad"><TeamTimeline rows={timelineRows} now={now} onOpen={setOpenShift} /></div>
+        ) : (
+          <Empty>Hoy todavía no hay turnos. Aquí verás el día de cada persona: actividad, pausas y huecos sin datos.</Empty>
+        )}
+      </div>
+
+      <div className="card rise">
         <div className="card-head">
           <h2>Vendedoras</h2>
           {hasChannel && (
@@ -172,16 +204,6 @@ export function Dashboard() {
 
       {openShift && <ShiftDetailModal shiftId={openShift} onClose={() => setOpenShift(null)} onChanged={() => void reload()} />}
     </>
-  );
-}
-
-function Stat({ icon, value, label, tone = '' }: { icon: string; value: React.ReactNode; label: string; tone?: string }) {
-  return (
-    <div className={`card stat with-icon ${tone}`}>
-      <span className="stat-icon"><Icon name={icon} size={20} /></span>
-      <b>{value}</b>
-      <span>{label}</span>
-    </div>
   );
 }
 

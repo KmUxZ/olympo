@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { db, inIds } from '../db/db.ts';
 import { guard, visibleUserIds } from '../core/http.ts';
 import { startOfLocalDay } from '../core/time.ts';
+import { computeSummary } from './summary.ts';
 
 /**
  * Estados en vivo. Se basan en evidencia, no en suposiciones:
@@ -111,6 +112,16 @@ export function dashboardRoutes(app: FastifyInstance): void {
     );
     const hourly = Array.from({ length: 24 }, (_, hour) => ({ hour, observedMinutes: hourlyRows.rows.find((r) => r.hour === hour)?.minutes ?? 0 }));
 
+    // Línea del día: los turnos de hoy de cada persona, minuto a minuto agrupados en tramos.
+    const todays = await db.query(
+      `SELECT * FROM argos_shifts WHERE company_id = $1 AND (started_at >= $2::timestamptz OR status = 'active') AND user_id ${inIds(3)} ORDER BY started_at LIMIT 80`,
+      [ctx.companyId, startOfLocalDay(ctx.company.timezone, now).toISOString(), userIds],
+    );
+    const timelines: { userId: string; shiftId: string; status: string; segments: unknown }[] = [];
+    for (const sh of todays.rows) {
+      timelines.push({ userId: sh.user_id, shiftId: sh.id, status: sh.status, segments: sh.status === 'ended' && sh.summary ? sh.summary.timeline : (await computeSummary(db, sh, now)).timeline });
+    }
+
     const counts: Record<LiveState, number> = { actividad_observada: 0, sin_actividad_observada: 0, en_pausa: 0, sin_senal: 0, fuera_de_turno: 0 };
     let notStarted = 0;
 
@@ -190,6 +201,7 @@ export function dashboardRoutes(app: FastifyInstance): void {
     return {
       serverTime: now,
       hourly,
+      timelines,
       channel: { provider: 'pancake', connectedLines: channelSync.lines, lastSyncAt: channelSync.last_sync_at, errors: channelSync.errors },
       settings: { staleSeconds, activityWindowMinutes },
       counts: { ...counts, total: users.length, enTurno: users.length - counts.fuera_de_turno, sinIniciarProgramadas: notStarted, novedadesAbiertas: incidents.rows.length },

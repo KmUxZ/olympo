@@ -2,6 +2,14 @@ import { useMemo, useState } from 'react';
 import { useApi } from '../lib/api';
 import { dayEndIso, dayStartIso, downloadCsv, fmtMinutes, fmtSeconds, isoDay } from '../lib/format';
 import { Empty, ErrorNote, Field, Loading, PageHead } from '../components/ui';
+import { Composition, StackedBars } from '../components/charts';
+
+const parts = (r: Totals) => [
+  { key: 'observada', value: r.observedMinutes },
+  { key: 'sin_actividad', value: r.noActivityMinutes },
+  { key: 'pausa', value: r.breakMinutes },
+  { key: 'sin_datos', value: r.noDataMinutes },
+];
 
 interface Totals { shifts: number; openShifts: number; durationMinutes: number; observedMinutes: number; noActivityMinutes: number; breakMinutes: number; noDataMinutes: number; incidents: number }
 interface UserRow extends Totals { userId: string; userName: string; teamName: string | null; inbox: number | null; avgResponseSeconds: number | null }
@@ -84,6 +92,13 @@ export function Reports() {
         </div>
       </div>
 
+      {data && data.byDay.some((d) => d.durationMinutes > 0) && (
+        <div className="card">
+          <div className="card-head"><h2>Cómo se repartió el tiempo, por día</h2><span className="xs muted">Turnos cerrados del periodo</span></div>
+          <StackedBars data={data.byDay.map((d) => ({ label: d.day.slice(8) + '/' + d.day.slice(5, 7), parts: parts(d) }))} />
+        </div>
+      )}
+
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'persona'} onClick={() => setTab('persona')}>Por persona</button>
         <button role="tab" aria-selected={tab === 'dia'} onClick={() => setTab('dia')}>Por día</button>
@@ -96,7 +111,7 @@ export function Reports() {
             <table>
               <thead>
                 <tr>
-                  <th>{tab === 'persona' ? 'Persona' : 'Día'}</th><th>Turnos</th><th>En turno</th><th>Con actividad observada</th><th>Sin actividad observada</th><th>En pausa</th><th>Sin datos</th><th>Novedades</th>
+                  <th>{tab === 'persona' ? 'Persona' : 'Día'}</th><th>Turnos</th><th>En turno</th><th>Reparto del tiempo</th><th>Con actividad observada</th><th>Sin actividad observada</th><th>En pausa</th><th>Sin datos</th><th>Novedades</th>
                   {tab === 'persona' && data.hasChannelData && <><th>Mensajes atendidos</th><th>Respuesta media</th></>}
                 </tr>
               </thead>
@@ -106,6 +121,7 @@ export function Reports() {
                     <td>{'userId' in r ? <><strong>{r.userName}</strong><span className="sub">{r.teamName ?? 'Sin equipo'}</span></> : <strong>{r.day}</strong>}</td>
                     <td>{r.shifts}</td>
                     <td>{fmtMinutes(r.durationMinutes)}</td>
+                    <td style={{ minWidth: 150, verticalAlign: 'middle' }}><Composition parts={parts(r)} /></td>
                     <td>{fmtMinutes(r.observedMinutes)}</td>
                     <td>{fmtMinutes(r.noActivityMinutes)}</td>
                     <td>{fmtMinutes(r.breakMinutes)}</td>
@@ -118,6 +134,7 @@ export function Reports() {
                   <td><strong>Total</strong></td>
                   <td><strong>{total(rows, 'shifts')}</strong></td>
                   <td><strong>{fmtMinutes(total(rows, 'durationMinutes'))}</strong></td>
+                  <td></td>
                   <td><strong>{fmtMinutes(total(rows, 'observedMinutes'))}</strong></td>
                   <td><strong>{fmtMinutes(total(rows, 'noActivityMinutes'))}</strong></td>
                   <td><strong>{fmtMinutes(total(rows, 'breakMinutes'))}</strong></td>

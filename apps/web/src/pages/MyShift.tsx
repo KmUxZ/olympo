@@ -39,11 +39,12 @@ export function MyShift() {
       <ErrorNote error={error} />
       {notice && <div className="alert ok" role="status">{notice}</div>}
 
-      <div className="card card-pad stack">
+      <div className="card card-pad stack hero-card">
         <div className="row">
           <div className="grow">
             {shift ? (
               <>
+                <div className="big-timer" aria-label="Tiempo en turno">{elapsed(shift.startedAt, now)}</div>
                 <h2>{openBreak ? `En pausa · ${BREAK_LABEL[openBreak.reason] ?? openBreak.reason}` : 'Turno en curso'}</h2>
                 <p className="small muted">
                   Iniciado a las {fmtTime(shift.startedAt)} · {openBreak ? `en pausa desde las ${fmtTime(openBreak.startedAt)}` : `última sincronización de la extensión ${shift.lastSyncAt ? ago(shift.lastSyncAt, now) : 'pendiente'}`}
@@ -123,6 +124,12 @@ export function MyShift() {
       {open && <ShiftDetailModal shiftId={open} onClose={() => setOpen(null)} />}
     </>
   );
+}
+
+/** Tiempo transcurrido como h:mm. */
+function elapsed(since: string, now: number): string {
+  const m = Math.max(0, Math.floor((now - new Date(since).getTime()) / 60000));
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')} h`;
 }
 
 function PauseModal({ shiftId, reasons, onClose, onSaved }: { shiftId: string; reasons: string[]; onClose: () => void; onSaved: () => Promise<void> }) {
