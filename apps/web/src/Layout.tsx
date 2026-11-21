@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from './auth';
 import type { Role } from './auth';
@@ -8,30 +9,38 @@ interface Item {
   label: string;
   to?: string; // sin ruta = módulo previsto, aún no disponible
   roles?: Role[];
+  badge?: 'openAlerts' | 'unreadMessages' | 'pendingToday';
 }
 
-// Navegación acordada. Los módulos sin ruta se muestran como "Próximamente" en lugar de pantallas vacías.
+interface Counts {
+  openAlerts: number;
+  unreadMessages: number;
+  pendingToday: number;
+  recentAlerts: { id: string; message: string }[];
+}
+
+// Navegación acordada. Un módulo sin ruta se mostraría como "Próximamente" en lugar de una pantalla vacía.
 const NAV: { group: string; items: Item[] }[] = [
   {
     group: 'Operación',
     items: [
-      { label: 'Agenda' },
+      { label: 'Agenda', to: '/agenda', badge: 'pendingToday' },
       { label: 'Dashboard', to: '/dashboard', roles: ['admin', 'supervisor'] },
       { label: 'Mi turno', to: '/mi-turno', roles: ['seller'] },
       { label: 'Novedades', to: '/novedades' },
       { label: 'Turnos', to: '/turnos', roles: ['admin', 'supervisor'] },
       { label: 'Líneas', to: '/lineas', roles: ['admin', 'supervisor'] },
-      { label: 'Reportes', roles: ['admin', 'supervisor'] },
+      { label: 'Reportes', to: '/reportes', roles: ['admin', 'supervisor'] },
     ],
   },
   {
     group: 'Equipo',
-    items: [{ label: 'Acompañamiento' }, { label: 'Mensajes' }, { label: 'Calidad' }],
+    items: [{ label: 'Acompañamiento', to: '/acompanamiento' }, { label: 'Mensajes', to: '/mensajes', badge: 'unreadMessages' }, { label: 'Calidad', to: '/calidad' }],
   },
   {
     group: 'Administración',
     items: [
-      { label: 'Alarmas', roles: ['admin'] },
+      { label: 'Alarmas', to: '/alarmas', roles: ['admin', 'supervisor'], badge: 'openAlerts' },
       { label: 'Usuarios', to: '/usuarios', roles: ['admin'] },
       { label: 'Auditoría', to: '/auditoria', roles: ['admin'] },
       { label: 'Configuración', to: '/configuracion', roles: ['admin'] },
@@ -39,8 +48,45 @@ const NAV: { group: string; items: Item[] }[] = [
   },
 ];
 
+/** Contadores del menú. Si el navegador tiene permiso, avisa también de cada alerta nueva. */
+function useCounts(enabled: boolean): Counts | null {
+  const [counts, setCounts] = useState<Counts | null>(null);
+  const seen = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    const load = async () => {
+      if (document.hidden) return;
+      try {
+        const next = await api<Counts>('GET', '/api/argos/notifications');
+        if (!alive) return;
+        if (seen.current && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          for (const a of next.recentAlerts) if (!seen.current.has(a.id)) new Notification('Argos · alerta', { body: a.message, tag: a.id });
+        }
+        seen.current = new Set(next.recentAlerts.map((a) => a.id));
+        setCounts(next);
+      } catch {
+        /* el menú sigue funcionando sin contadores */
+      }
+    };
+    void load();
+    const id = setInterval(load, 30_000);
+    const refresh = () => void load();
+    window.addEventListener('olympo:notifications', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      alive = false;
+      clearInterval(id);
+      window.removeEventListener('olympo:notifications', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [enabled]);
+  return counts;
+}
+
 export function Layout() {
   const { me, logout } = useAuth();
+  const counts = useCounts(Boolean(me));
   if (!me) return null;
   const role = me.user.role;
   async function exitSupport() {
@@ -66,6 +112,9 @@ export function Layout() {
                   item.to ? (
                     <NavLink key={item.label} to={item.to}>
                       {item.label}
+                      {item.badge && counts && counts[item.badge] > 0 && (
+                        <em className="count" aria-label={`${counts[item.badge]} pendientes`}>{counts[item.badge]}</em>
+                      )}
                     </NavLink>
                   ) : (
                     <div key={item.label} className="soon" aria-disabled="true">

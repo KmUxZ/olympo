@@ -15,6 +15,8 @@ const FEED_TEXT: Record<string, (detail: string) => string> = {
 
 export function Dashboard() {
   const { data, error, loading, updatedAt, reload } = useApi('/api/argos/dashboard', 15_000);
+  const alerts = useApi<{ alerts: { id: string; message: string; ackAt: string | null }[] }>('/api/argos/alerts', 20_000);
+  const counts = useApi<{ pendingToday: number }>('/api/argos/notifications', 60_000);
   const localNow = useNow(5000);
   const [openShift, setOpenShift] = useState<string | null>(null);
 
@@ -40,9 +42,18 @@ export function Dashboard() {
         <div className="card stat"><b>{c.en_pausa}</b><span>En pausa</span></div>
         <div className="card stat"><b>{c.sin_senal}</b><span>Sin señal</span></div>
         <div className="card stat"><b>{c.novedadesAbiertas}</b><span>Novedades abiertas</span></div>
+        <div className="card stat"><b>{counts.data?.pendingToday ?? '—'}</b><span>Tareas pendientes hoy</span></div>
       </div>
 
-      {c.sinIniciarProgramadas > 0 && (
+      {alerts.data && alerts.data.alerts.length > 0 && (
+        <div className="alert danger" role="status">
+          <strong>{alerts.data.alerts.length === 1 ? '1 alerta abierta' : `${alerts.data.alerts.length} alertas abiertas`}.</strong>{' '}
+          {alerts.data.alerts.slice(0, 3).map((a) => a.message).join(' · ')}
+          {alerts.data.alerts.length > 3 && ' · …'} <Link to="/alarmas">Ver alarmas</Link>
+        </div>
+      )}
+
+      {c.sinIniciarProgramadas > 0 && !alerts.data?.alerts.length && (
         <div className="alert warn">
           {c.sinIniciarProgramadas === 1 ? '1 persona tiene' : `${c.sinIniciarProgramadas} personas tienen`} turno programado a esta hora y aún no lo {c.sinIniciarProgramadas === 1 ? 'ha' : 'han'} iniciado.
         </div>

@@ -15,7 +15,7 @@ Flujo completo implementado:
 Pantallas disponibles: Inicio de sesión · Dashboard · Mi turno · Novedades · Turnos (historial y programación) ·
 Líneas · Usuarios y equipos · Auditoría · Configuración (herramientas y conservación) · Qué se registra.
 
-Previsto para después (visible en el menú como «Próximamente»): Agenda, Reportes, Acompañamiento, Mensajes, Calidad, Alarmas.
+Agenda, Reportes, Acompañamiento, Mensajes, Calidad y Alarmas se añadieron después (ver sección 11).
 
 ## 2. Arquitectura
 
@@ -149,3 +149,17 @@ plataforma sobre una empresa (creación, suspensión, límites, restablecimiento
 - El administrador ve en Usuarios quién ha aceptado y quién no.
 - Si cambia lo que se registra, se sube `CONSENT_VERSION` (apps/server/src/config.ts) y todos deben aceptar de nuevo.
 - Esto es una constancia técnica; el texto y su validez legal deben revisarse con un abogado según el país.
+
+## 11. Módulos de operación y equipo (implementados)
+
+| Módulo | Qué hace | Quién |
+| --- | --- | --- |
+| **Alarmas** | Cinco reglas configurables (turno sin iniciar, sin señal, pausa prolongada, sin actividad observada, novedad sin atender). Las alertas se abren y se cierran solas; «Enterado» indica que alguien ya la atiende. Aviso en el menú, en el dashboard y, opcionalmente, notificación del navegador. | Reglas: administrador. Alertas: administrador y supervisor (su equipo). |
+| **Reportes** | Totales por persona y por día, con filtros de fecha, persona, equipo y línea. Incluye mensajes atendidos y respuesta media de Pancake. Exporta a CSV para Excel. Sin conteos de teclas. | Administrador y supervisor. |
+| **Agenda** | Tareas, reuniones, compromisos y actividades para una persona, un equipo o toda la empresa. Cada quien marca lo suyo como hecho. | Todos; cada rol programa dentro de su alcance. |
+| **Mensajes** | Mensajes directos, a un equipo o a toda la empresa, con contador de no leídos. Una vendedora escribe a su supervisión y a administración. | Todos. |
+| **Acompañamiento** | Sesiones de seguimiento con notas y compromisos con fecha y estado. La persona ve las suyas. | Registra: supervisor y administrador. |
+| **Calidad** | Criterios con peso definidos por la empresa; evaluación con nota por criterio, resultado ponderado sobre 100, observaciones y retroalimentación. La persona confirma que la leyó. Las evaluaciones guardan copia de los criterios usados. | Criterios: administrador. Evalúa: supervisor y administrador. |
+
+La alarma «sin actividad observada» es un aviso para preguntar, no una falta: no se dispara durante una pausa, sin señal,
+ni cuando la persona tiene una novedad abierta que explica la inactividad.
