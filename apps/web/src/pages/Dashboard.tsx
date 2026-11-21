@@ -5,7 +5,7 @@ import { useApi, useNow } from '../lib/api';
 import { ago, BREAK_LABEL, fmtLongDay, fmtSeconds, fmtMinutes, fmtTime, INCIDENT_LABEL, INCIDENT_STATUS, LIVE_STATE, scheduleText } from '../lib/format';
 import { Badge, Empty, ErrorNote, Freshness, Loading, StatePill } from '../components/ui';
 import { ShiftDetailModal } from '../components/ShiftDetail';
-import { Donut, TeamTimeline } from '../components/charts';
+import { Donut, HourBars, TeamTimeline } from '../components/charts';
 
 const LIVE_KEYS = ['actividad_observada', 'sin_actividad_observada', 'en_pausa', 'sin_senal', 'fuera_de_turno'] as const;
 
@@ -164,7 +164,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      <HourlyChart hourly={data.hourly} now={new Date(now)} />
+      <HourlyCharts hourly={data.hourly} now={new Date(now)} showInbox={hasChannel} />
 
       <div className="grid cols-2">
         <div className="card">
@@ -208,49 +208,34 @@ export function Dashboard() {
 }
 
 /**
- * Actividad observada del equipo por hora (hoy). Una sola serie: no necesita leyenda.
- * Cada barra admite foco y muestra su valor; debajo hay una tabla equivalente para lectores de pantalla.
+ * Actividad observada por hora y, si hay integración, mensajes atendidos por hora.
+ * Son dos medidas con unidades distintas: van en dos gráficos con el mismo eje de horas, no en uno con dos escalas.
  */
-function HourlyChart({ hourly, now }: { hourly: { hour: number; observedMinutes: number }[]; now: Date }) {
-  const withData = hourly.filter((h) => h.observedMinutes > 0);
+function HourlyCharts({ hourly, now, showInbox }: { hourly: { hour: number; observedMinutes: number; inbox: number }[]; now: Date; showInbox: boolean }) {
+  const withData = hourly.filter((h) => h.observedMinutes > 0 || (showInbox && h.inbox > 0));
   if (!withData.length) {
     return (
       <div className="card">
-        <div className="card-head"><h2>Actividad observada por hora</h2><span className="xs muted">Hoy</span></div>
+        <div className="card-head"><h2>Actividad por hora</h2><span className="xs muted">Hoy</span></div>
         <div className="empty">Aún no hay actividad registrada hoy. Aparecerá cuando alguien trabaje en sus herramientas con el turno iniciado.</div>
       </div>
     );
   }
-  // Se muestra desde la primera hora con datos (mínimo 2 h antes) hasta la hora actual.
   const first = Math.max(0, Math.min(...withData.map((h) => h.hour)) - 1);
   const last = Math.max(now.getHours(), Math.max(...withData.map((h) => h.hour)));
   const shown = hourly.filter((h) => h.hour >= first && h.hour <= last);
-  const max = Math.max(...shown.map((h) => h.observedMinutes));
-  const top = Math.max(10, Math.ceil(max / 10) * 10);
-  const label = (h: number) => `${String(h).padStart(2, '0')}:00`;
   return (
-    <div className="card">
-      <div className="card-head">
-        <h2>Actividad observada por hora</h2>
-        <span className="xs muted">Hoy · minutos-persona con teclado o ratón en herramientas autorizadas</span>
+    <div className={showInbox ? 'grid cols-2' : ''}>
+      <div className="card">
+        <div className="card-head"><h2>Actividad observada por hora</h2><span className="xs muted">Hoy · minutos-persona en herramientas</span></div>
+        <HourBars unit="min" values={shown.map((h) => ({ hour: h.hour, value: h.observedMinutes }))} />
       </div>
-      <div className="chart">
-        <div className="chart-scale"><span>{top} min</span></div>
-        <div className="chart-plot" role="img" aria-label={`Minutos con actividad observada por hora, de ${label(first)} a ${label(last)}`}>
-          {shown.map((h) => (
-            <div className="chart-col" key={h.hour} tabIndex={0} aria-label={`${label(h.hour)}: ${h.observedMinutes} minutos`}>
-              <span className="chart-tip">{label(h.hour)} · {h.observedMinutes} min</span>
-              <div className="chart-bar" style={{ height: `${(h.observedMinutes / top) * 100}%` }} />
-            </div>
-          ))}
+      {showInbox && (
+        <div className="card">
+          <div className="card-head"><h2>Mensajes atendidos por hora</h2><span className="xs muted">Hoy · dato de Pancake</span></div>
+          <HourBars unit="mensajes" tone="blue" values={shown.map((h) => ({ hour: h.hour, value: h.inbox }))} />
         </div>
-        <div className="chart-axis" aria-hidden="true">{shown.map((h) => <span key={h.hour}>{shown.length > 14 && h.hour % 2 ? '' : String(h.hour).padStart(2, '0')}</span>)}</div>
-        <table className="sr-only">
-          <caption>Minutos con actividad observada por hora</caption>
-          <thead><tr><th>Hora</th><th>Minutos</th></tr></thead>
-          <tbody>{shown.map((h) => <tr key={h.hour}><td>{label(h.hour)}</td><td>{h.observedMinutes}</td></tr>)}</tbody>
-        </table>
-      </div>
+      )}
     </div>
   );
 }

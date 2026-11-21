@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../auth';
 import { api, useApi } from '../lib/api';
 import { CHANNEL_LABEL } from '../lib/format';
-import { Badge, Empty, ErrorNote, Field, FormModal, Loading, PageHead } from '../components/ui';
+import { Badge, Empty, ErrorNote, Field, FormModal, Loading, PageHero } from '../components/ui';
 
 interface Line { id: string; label: string; channel: string; identifier: string; active: boolean; assignedUserId: string | null; assignedUserName: string | null }
 
@@ -18,9 +18,9 @@ export function Lines() {
 
   return (
     <>
-      <PageHead title="Líneas" subtitle="Números o canales comerciales y a quién está asignado cada uno.">
+      <PageHero kpis={[{ label: 'Activas', value: lines.data.lines.filter((l) => l.active).length }, { label: 'Asignadas', value: lines.data.lines.filter((l) => l.active && l.assignedUserId).length }, { label: 'Sin asignar', value: lines.data.lines.filter((l) => l.active && !l.assignedUserId).length }]} title="Líneas" subtitle="Números o canales comerciales y a quién está asignado cada uno.">
         {isAdmin && <button className="btn primary" onClick={() => setEditing('new')}>Nueva línea</button>}
-      </PageHead>
+      </PageHero>
       <div className="card">
         {lines.data.lines.length ? (
           <div className="table-wrap">

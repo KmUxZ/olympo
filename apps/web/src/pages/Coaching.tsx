@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../auth';
 import { api, useApi } from '../lib/api';
 import { COMMITMENT_STATUS, fmtDate, isoDay } from '../lib/format';
-import { Badge, Empty, ErrorNote, Field, FormModal, Loading, PageHead } from '../components/ui';
+import { Badge, Empty, ErrorNote, Field, FormModal, Loading, PageHero } from '../components/ui';
 
 interface Commitment { id: string; text: string; dueDate: string | null; status: string }
 interface Session { id: string; userId: string; userName: string; coachName: string; heldAt: string; topic: string; notes: string; commitments: Commitment[] }
@@ -17,6 +17,9 @@ export function Coaching() {
   const [error, setError] = useState<string | null>(null);
   const sellers = (users.data?.users ?? []).filter((u) => u.role === 'seller' && u.status === 'active');
 
+  const allSessions = list.data?.sessions ?? [];
+  const allCommitments = allSessions.flatMap((s) => s.commitments);
+
   async function setStatus(c: Commitment, status: string) {
     setError(null);
     try {
@@ -29,7 +32,7 @@ export function Coaching() {
 
   return (
     <>
-      <PageHead title="Acompañamiento" subtitle={canManage ? 'Sesiones de seguimiento con cada persona, sus compromisos y planes de mejora.' : 'Tus sesiones de seguimiento y los compromisos acordados.'}>
+      <PageHero kpis={[{ label: 'Sesiones', value: allSessions.length }, { label: 'Compromisos pendientes', value: allCommitments.filter((c) => c.status === 'pendiente').length }, { label: 'Cumplidos', value: allCommitments.length ? `${Math.round((allCommitments.filter((c) => c.status === 'cumplido').length / allCommitments.length) * 100)} %` : '—' }]} title="Acompañamiento" subtitle={canManage ? 'Sesiones de seguimiento con cada persona, sus compromisos y planes de mejora.' : 'Tus sesiones de seguimiento y los compromisos acordados.'}>
         {canManage && (
           <>
             <select aria-label="Filtrar por persona" value={userId} onChange={(e) => setUserId(e.target.value)} style={{ width: 220 }}>
@@ -39,7 +42,7 @@ export function Coaching() {
             <button className="btn primary" onClick={() => setCreating(true)}>Registrar sesión</button>
           </>
         )}
-      </PageHead>
+      </PageHero>
       <ErrorNote error={error ?? list.error} />
 
       {!list.data ? <Loading /> : list.data.sessions.length ? (

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../auth';
 import { api, useApi, useNow } from '../lib/api';
 import { ago, fmtDate, fmtDateTime } from '../lib/format';
-import { Badge, Empty, ErrorNote, Field, FormModal, Freshness, Loading, Modal, PageHead } from '../components/ui';
+import { Badge, Empty, ErrorNote, Field, FormModal, Freshness, Loading, Modal, PageHero } from '../components/ui';
 
 interface Company {
   id: string; name: string; timezone: string; isDemo: boolean; status: 'active' | 'suspended'; suspendedReason: string;
@@ -47,10 +47,10 @@ export function Platform() {
 
   return (
     <>
-      <PageHead title="Empresas" subtitle="Clientes de la plataforma. Aquí solo hay datos de gestión: la actividad de cada equipo pertenece a su empresa.">
+      <PageHero kpis={[{ label: 'Empresas activas', value: (list.data?.companies ?? []).filter((c) => c.status === 'active').length }, { label: 'Suspendidas', value: (list.data?.companies ?? []).filter((c) => c.status === 'suspended').length }, { label: 'Vendedoras en total', value: (list.data?.companies ?? []).reduce((n, c) => n + c.sellers, 0) }]} title="Empresas" subtitle="Clientes de la plataforma. Aquí solo hay datos de gestión: la actividad de cada equipo pertenece a su empresa.">
         <Freshness updatedAt={list.updatedAt} error={list.error} staleAfterMs={150_000} />
         <button className="btn primary" onClick={() => setCreating(true)}>Nueva empresa</button>
-      </PageHead>
+      </PageHero>
       <ErrorNote error={error} />
 
       <div className="card">

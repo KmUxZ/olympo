@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../auth';
 import { api, useApi } from '../lib/api';
 import { fmtDateTime, INCIDENT_LABEL, INCIDENT_STATUS } from '../lib/format';
-import { Badge, Empty, ErrorNote, Field, FormModal, Freshness, Loading, PageHead } from '../components/ui';
+import { Badge, Empty, ErrorNote, Field, FormModal, Freshness, Loading, PageHero } from '../components/ui';
 import { IncidentForm } from '../components/IncidentForm';
 
 interface Incident { id: string; userId: string; userName: string; reportedByName: string; type: string; description: string; status: string; resolutionNote: string; lineLabel: string | null; createdAt: string; resolvedAt: string | null }
@@ -11,29 +11,32 @@ export function Incidents() {
   const { me } = useAuth();
   const canManage = me?.user.role !== 'seller';
   const [status, setStatus] = useState('');
-  const list = useApi<{ incidents: Incident[] }>(`/api/argos/incidents${status ? `?status=${status}` : ''}`, 30_000);
+  // Se traen todas y el filtro se aplica aquí, para que los indicadores de la cabecera no dependan de la pestaña.
+  const list = useApi<{ incidents: Incident[] }>('/api/argos/incidents', 30_000);
+  const all = list.data?.incidents ?? [];
+  const incidents = all.filter((i) => !status || i.status === status);
   const users = useApi<{ users: { id: string; name: string; role: string; status: string }[] }>(canManage ? '/api/users' : null);
   const [creating, setCreating] = useState(false);
   const [managing, setManaging] = useState<Incident | null>(null);
 
   return (
     <>
-      <PageHead title="Novedades" subtitle="Problemas operativos, ausencias, fallas de conexión y dificultades con las líneas.">
+      <PageHero kpis={[{ label: 'Abiertas', value: all.filter((i) => i.status === 'abierta').length }, { label: 'En curso', value: all.filter((i) => i.status === 'en_curso').length }, { label: 'Resueltas', value: all.filter((i) => i.status === 'resuelta').length }]} title="Novedades" subtitle="Problemas operativos, ausencias, fallas de conexión y dificultades con las líneas.">
         <Freshness updatedAt={list.updatedAt} error={list.error} staleAfterMs={90_000} />
         <button className="btn primary" onClick={() => setCreating(true)}>Registrar novedad</button>
-      </PageHead>
+      </PageHero>
       <div className="tabs" role="tablist">
         {[['', 'Todas'], ['abierta', 'Abiertas'], ['en_curso', 'En curso'], ['resuelta', 'Resueltas']].map(([v, label]) => (
           <button key={v} role="tab" aria-selected={status === v} onClick={() => setStatus(v)}>{label}</button>
         ))}
       </div>
       <div className="card">
-        {!list.data ? (list.error ? <ErrorNote error={list.error} /> : <Loading />) : list.data.incidents.length ? (
+        {!list.data ? (list.error ? <ErrorNote error={list.error} /> : <Loading />) : incidents.length ? (
           <div className="table-wrap">
             <table>
               <thead><tr><th>Fecha</th><th>Persona</th><th>Tipo</th><th>Descripción</th><th>Estado</th><th></th></tr></thead>
               <tbody>
-                {list.data.incidents.map((i) => (
+                {incidents.map((i) => (
                   <tr key={i.id}>
                     <td className="nowrap">{fmtDateTime(i.createdAt)}</td>
                     <td><strong>{i.userName}</strong>{i.reportedByName !== i.userName && <span className="sub">Registró: {i.reportedByName}</span>}</td>

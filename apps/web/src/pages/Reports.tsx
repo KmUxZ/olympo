@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useApi } from '../lib/api';
 import { dayEndIso, dayStartIso, downloadCsv, fmtMinutes, fmtSeconds, isoDay } from '../lib/format';
-import { Empty, ErrorNote, Field, Loading, PageHead } from '../components/ui';
+import { Empty, ErrorNote, Field, Loading, PageHero } from '../components/ui';
 import { Composition, StackedBars } from '../components/charts';
 
 const parts = (r: Totals) => [
@@ -59,9 +59,9 @@ export function Reports() {
 
   return (
     <>
-      <PageHead title="Reportes" subtitle="Totales del periodo a partir de los turnos cerrados y de los datos de Pancake.">
+      <PageHero kpis={[{ label: 'Turnos', value: data ? total(data.byUser, 'shifts') : '—' }, { label: 'En turno', value: data ? fmtMinutes(total(data.byUser, 'durationMinutes')) : '—' }, { label: 'Con actividad observada', value: data ? fmtMinutes(total(data.byUser, 'observedMinutes')) : '—' }]} title="Reportes" subtitle="Totales del periodo a partir de los turnos cerrados y de los datos de Pancake.">
         <button className="btn" disabled={!data || !rows.length} onClick={exportCsv}>Exportar a Excel (CSV)</button>
-      </PageHead>
+      </PageHero>
 
       <div className="card card-pad row">
         <div className="grow"><Field label="Desde"><input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} /></Field></div>

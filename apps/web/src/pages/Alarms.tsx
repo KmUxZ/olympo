@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../auth';
 import { api, useApi, useNow } from '../lib/api';
 import { ago, fmtDateTime } from '../lib/format';
-import { Badge, Empty, ErrorNote, Freshness, Loading, PageHead } from '../components/ui';
+import { Badge, Empty, ErrorNote, Freshness, Loading, PageHero } from '../components/ui';
 
 interface Alert { id: string; type: string; typeLabel: string; userName: string; message: string; startedAt: string; resolvedAt: string | null; ackAt: string | null; ackByName: string | null }
 interface Rule { type: string; label: string; help: string; defaultMinutes: number; enabled: boolean; thresholdMinutes: number }
@@ -44,16 +44,17 @@ export function Alarms() {
       setError((err as Error).message);
     }
   }
+  const openAlerts = (alerts.data?.alerts ?? []).filter((a) => !a.resolvedAt);
   const patch = (type: string, change: Partial<Rule>) => setForm((f) => f && f.map((r) => (r.type === type ? { ...r, ...change } : r)));
 
   return (
     <>
-      <PageHead title="Alarmas" subtitle="Avisos automáticos sobre situaciones operativas. Se abren y se cierran solas según lo que está pasando.">
+      <PageHero kpis={[{ label: 'Sin atender', value: openAlerts.filter((a) => !a.ackAt).length }, { label: 'En atención', value: openAlerts.filter((a) => a.ackAt).length }, { label: 'Reglas activas', value: form ? form.filter((r) => r.enabled).length : '—' }]} title="Alarmas" subtitle="Avisos automáticos sobre situaciones operativas. Se abren y se cierran solas según lo que está pasando.">
         <Freshness updatedAt={alerts.updatedAt} error={alerts.error} staleAfterMs={60_000} />
         {permission === 'default' && (
           <button className="btn sm" onClick={() => void Notification.requestPermission().then(setPermission)}>Activar avisos del navegador</button>
         )}
-      </PageHead>
+      </PageHero>
       <ErrorNote error={error} />
       {permission === 'granted' && <p className="small muted">Avisos del navegador activados: recibirás una notificación mientras tengas Argos abierto en una pestaña.</p>}
 

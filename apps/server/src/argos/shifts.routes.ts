@@ -309,7 +309,12 @@ export function shiftRoutes(app: FastifyInstance): void {
     await assertCanSeeUser(ctx, shift.user_id);
     const owner = (await db.query(`SELECT name FROM core_users WHERE id = $1`, [shift.user_id])).rows[0];
     const summary = shift.status === 'ended' && shift.summary ? shift.summary : await computeSummary(db, shift);
+    const incidents = await db.query(
+      `SELECT id, type, description, status, created_at AS "createdAt", resolved_at AS "resolvedAt" FROM argos_incidents WHERE shift_id = $1 ORDER BY created_at`,
+      [id],
+    );
     return {
+      incidents: incidents.rows,
       shift: { ...shiftView(shift), userId: shift.user_id, userName: owner?.name, endReason: shift.end_reason, lines: shift.lines },
       summary: summaryFor(ctx, shift.user_id, summary),
     };

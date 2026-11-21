@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useAuth } from '../auth';
 import { api, useApi } from '../lib/api';
 import { END_REASON, fmtDateTime, fmtMinutes, fmtTime, scheduleText } from '../lib/format';
-import { Badge, Empty, ErrorNote, Field, FormModal, Loading, PageHead } from '../components/ui';
+import { Badge, Empty, ErrorNote, Field, FormModal, Loading, PageHero } from '../components/ui';
 import { ScheduleFields, toScheduleValue } from '../components/ScheduleFields';
 import type { ScheduleValue } from '../components/ScheduleFields';
 import { ShiftDetailModal } from '../components/ShiftDetail';
@@ -16,9 +16,12 @@ const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padSt
 
 export function Shifts() {
   const [tab, setTab] = useState<'historial' | 'programacion'>('historial');
+  const recentPath = useMemo(() => `/api/argos/shifts?limit=300&from=${encodeURIComponent(new Date(Date.now() - 7 * 86400_000).toISOString())}`, []);
+  const recent = useApi<{ shifts: { status: string; durationMinutes: number | null }[] }>(recentPath, 60_000);
+  const recentShifts = recent.data?.shifts ?? [];
   return (
     <>
-      <PageHead title="Turnos" subtitle="Turnos realizados con su resumen y la programación semanal de cada persona." />
+      <PageHero kpis={[{ label: 'En curso ahora', value: recentShifts.filter((s) => s.status === 'active').length }, { label: 'Turnos · 7 días', value: recentShifts.length }, { label: 'Horas · 7 días', value: fmtMinutes(recentShifts.reduce((n, s) => n + (s.durationMinutes ?? 0), 0)) }]} title="Turnos" subtitle="Turnos realizados con su resumen y la programación semanal de cada persona." />
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'historial'} onClick={() => setTab('historial')}>Historial</button>
         <button role="tab" aria-selected={tab === 'programacion'} onClick={() => setTab('programacion')}>Programación</button>

@@ -2,7 +2,8 @@ import { Fragment, useState } from 'react';
 import { useAuth } from '../auth';
 import { api, useApi } from '../lib/api';
 import { fmtDate } from '../lib/format';
-import { Badge, Empty, ErrorNote, Field, FormModal, Loading, PageHead } from '../components/ui';
+import { Sparkline } from '../components/charts';
+import { Badge, Empty, ErrorNote, Field, FormModal, Loading, PageHero } from '../components/ui';
 
 interface Score { criterionId: string; name: string; weight: number; score: number }
 interface Evaluation { id: string; userId: string; userName: string; evaluatorName: string; reference: string; observations: string; feedback: string; scores: Score[]; total: number; createdAt: string; acknowledgedAt: string | null }
@@ -30,6 +31,19 @@ export function Quality() {
   const [error, setError] = useState<string | null>(null);
   const active = (criteria.data?.criteria ?? []).filter((c) => c.active);
   const maxScore = list.data?.maxScore ?? 5;
+  const evals = list.data?.evaluations ?? [];
+  // Evolución: evaluaciones de cada persona en orden cronológico.
+  const byUser = new Map<string, Evaluation[]>();
+  for (const e of [...evals].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) byUser.set(e.userId, [...(byUser.get(e.userId) ?? []), e]);
+  const trends = [...byUser.values()].map((list) => {
+    const values = list.map((e) => e.total);
+    const last = values[values.length - 1];
+    return {
+      userId: list[0].userId, userName: list[0].userName, values, last,
+      average: Math.round(values.reduce((n, v) => n + v, 0) / values.length),
+      change: values.length > 1 ? last - values[values.length - 2] : null,
+    };
+  }).sort((a, b) => a.userName.localeCompare(b.userName));
 
   async function act(fn: () => Promise<unknown>) {
     setError(null);
@@ -44,10 +58,36 @@ export function Quality() {
 
   return (
     <>
-      <PageHead title="Calidad" subtitle={canEvaluate ? 'Evaluaciones de la atención con criterios configurables, observaciones y retroalimentación.' : 'Tus evaluaciones de calidad y la retroalimentación recibida.'}>
+      <PageHero kpis={[{ label: 'Evaluaciones', value: evals.length }, { label: 'Promedio', value: evals.length ? `${Math.round(evals.reduce((n, e) => n + e.total, 0) / evals.length)}` : '—' }, { label: 'Sin confirmar lectura', value: evals.filter((e) => !e.acknowledgedAt).length }]} title="Calidad" subtitle={canEvaluate ? 'Evaluaciones de la atención con criterios configurables, observaciones y retroalimentación.' : 'Tus evaluaciones de calidad y la retroalimentación recibida.'}>
         {canEvaluate && <button className="btn primary" disabled={!active.length} onClick={() => setEvaluating(true)}>Nueva evaluación</button>}
-      </PageHead>
+      </PageHero>
       <ErrorNote error={error ?? list.error} />
+
+      {trends.length > 0 && (
+        <div className="card">
+          <div className="card-head">
+            <h2>{canEvaluate ? 'Evolución por persona' : 'Tu evolución'}</h2>
+            <span className="xs muted">Cada punto es una evaluación, de la más antigua a la más reciente · línea punteada = 80</span>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr>{canEvaluate && <th>Persona</th>}<th>Evolución</th><th>Última</th><th>Promedio</th><th>Cambio</th><th>Evaluaciones</th></tr></thead>
+              <tbody>
+                {trends.map((t) => (
+                  <tr key={t.userId}>
+                    {canEvaluate && <td><strong>{t.userName}</strong></td>}
+                    <td><Sparkline values={t.values} label={`Evolución de ${t.userName}`} /></td>
+                    <td><Badge tone={tone(t.last)}>{t.last} de 100</Badge></td>
+                    <td>{t.average}</td>
+                    <td>{t.change === null ? <span className="muted">Primera evaluación</span> : t.change === 0 ? 'Igual' : <span className={t.change > 0 ? 'trend-up' : 'trend-down'}>{t.change > 0 ? `▲ +${t.change}` : `▼ ${t.change}`}</span>}</td>
+                    <td>{t.values.length}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="card">
         {!list.data ? <Loading /> : list.data.evaluations.length ? (

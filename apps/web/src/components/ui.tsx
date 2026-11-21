@@ -16,6 +16,26 @@ export function PageHead({ title, subtitle, children }: { title: string; subtitl
   );
 }
 
+/** Cabecera de pantalla con la identidad de Argos: título, acciones y hasta tres o cuatro indicadores clave. */
+export function PageHero({ title, subtitle, kpis = [], children }: { title: string; subtitle?: string; kpis?: { label: string; value: ReactNode }[]; children?: ReactNode }) {
+  return (
+    <section className="hero compact" aria-label={title}>
+      <div className="hero-main">
+        <h1>{title}</h1>
+        {subtitle && <p>{subtitle}</p>}
+        {children && <div className="hero-actions">{children}</div>}
+      </div>
+      {kpis.length > 0 && (
+        <div className="hero-kpis">
+          {kpis.map((k) => (
+            <div className="hero-kpi" key={k.label}><b>{k.value}</b><span>{k.label}</span></div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function Badge({ tone = '', children }: { tone?: string; children: ReactNode }) {
   return <span className={`badge ${tone}`}>{children}</span>;
 }

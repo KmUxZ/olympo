@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useAuth } from '../auth';
 import { api, useApi } from '../lib/api';
-import { BREAK_LABEL, download, END_REASON, fmtDateTime, fmtMinutes, fmtTime } from '../lib/format';
-import { Badge, ErrorNote, Loading, Modal, Timeline } from './ui';
+import { BREAK_LABEL, INCIDENT_LABEL, download, END_REASON, fmtDateTime, fmtMinutes, fmtTime } from '../lib/format';
+import { Badge, ErrorNote, Loading, Modal } from './ui';
+import { TeamTimeline } from './charts';
 
 /** Resumen de un turno. Si el turno sigue abierto, las cifras son parciales y se indica. */
 export function ShiftSummaryView({ shiftId, refreshMs = 0, onChanged }: { shiftId: string; refreshMs?: number; onChanged?: () => void }) {
@@ -58,7 +59,18 @@ export function ShiftSummaryView({ shiftId, refreshMs = 0, onChanged }: { shiftI
         <div className="card stat"><b>{summary.incidents}</b><span>Novedades</span></div>
       </div>
 
-      <Timeline segments={summary.timeline} />
+      <TeamTimeline
+        single
+        showNow={summary.live}
+        now={Date.now()}
+        rows={[{
+          key: shiftId, name: shift.userName, note: '', segments: summary.timeline,
+          markers: (data.incidents ?? []).map((i: { createdAt: string; type: string; description: string }) => ({ at: i.createdAt, label: `Novedad · ${INCIDENT_LABEL[i.type] ?? i.type}: ${i.description}` })),
+        }]}
+      />
+      {data.incidents?.length > 0 && (
+        <p className="small muted">Los rombos rojos marcan las novedades reportadas durante el turno ({data.incidents.length}). Sirven para entender los tramos sin actividad o sin datos.</p>
+      )}
 
       <div className="alert info">
         «Sin actividad observada» indica que no hubo teclado ni ratón en las herramientas autorizadas; no equivale a no trabajar.

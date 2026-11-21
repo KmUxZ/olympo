@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../auth';
 import { api, useApi } from '../lib/api';
 import { fmtDate, ROLE_LABEL, scheduleText } from '../lib/format';
-import { Badge, Empty, ErrorNote, Field, FormModal, Loading, Modal, PageHead } from '../components/ui';
+import { Badge, Empty, ErrorNote, Field, FormModal, Loading, Modal, PageHero } from '../components/ui';
 import { ScheduleFields, toScheduleValue } from '../components/ScheduleFields';
 import type { ScheduleValue } from '../components/ScheduleFields';
 
@@ -37,10 +37,10 @@ export function Users() {
 
   return (
     <>
-      <PageHead title="Usuarios" subtitle="Cuentas, roles y equipos. Cada cambio queda en auditoría.">
+      <PageHero kpis={[{ label: 'Cuentas activas', value: users.data.users.filter((u) => u.status === 'active').length }, { label: 'Vendedoras', value: users.data.users.filter((u) => u.status === 'active' && u.role === 'seller').length }, { label: 'Equipos', value: teams.data.teams.length }]} title="Usuarios" subtitle="Cuentas, roles y equipos. Cada cambio queda en auditoría.">
         <button className="btn" onClick={() => setEditingTeam('new')}>Nuevo equipo</button>
         <button className="btn primary" onClick={() => setEditing('new')}>Nuevo usuario</button>
-      </PageHead>
+      </PageHero>
 
       <div className="card">
         <div className="table-wrap">

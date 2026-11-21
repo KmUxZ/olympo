@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useAuth } from '../auth';
 import { api, useApi } from '../lib/api';
 import { AGENDA_KIND, fmtLongDay, fmtTime, isoDay } from '../lib/format';
-import { Badge, Empty, ErrorNote, Field, FormModal, Loading, PageHead } from '../components/ui';
+import { Badge, Empty, ErrorNote, Field, FormModal, Loading, PageHero } from '../components/ui';
 
 interface Item { id: string; title: string; notes: string; kind: string; startsAt: string; endsAt: string | null; status: string; userId: string | null; userName: string | null; teamId: string | null; teamName: string | null; createdBy: string; createdByName: string }
 
@@ -32,6 +32,7 @@ export function Agenda() {
   const remove = (item: Item) => window.confirm(`¿Eliminar «${item.title}»?`) && act(() => api('DELETE', `/api/argos/agenda/${item.id}`));
 
   const today = isoDay(new Date());
+  const pendingItems = (list.data?.items ?? []).filter((i) => i.status === 'pendiente');
   const items = (list.data?.items ?? []).filter((i) => showDone || i.status === 'pendiente');
   const groups = new Map<string, Item[]>();
   for (const item of items) {
@@ -41,10 +42,10 @@ export function Agenda() {
 
   return (
     <>
-      <PageHead title="Agenda" subtitle="Tareas, reuniones, compromisos y actividades programadas.">
+      <PageHero kpis={[{ label: 'Para hoy', value: pendingItems.filter((i) => isoDay(new Date(i.startsAt)) === today).length }, { label: 'Atrasadas', value: pendingItems.filter((i) => isoDay(new Date(i.startsAt)) < today).length }, { label: 'Próximas', value: pendingItems.filter((i) => isoDay(new Date(i.startsAt)) > today).length }]} title="Agenda" subtitle="Tareas, reuniones, compromisos y actividades programadas.">
         <label className="checks small"><span><input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Mostrar hechas y canceladas</span></label>
         <button className="btn primary" onClick={() => setCreating(true)}>Nuevo</button>
-      </PageHead>
+      </PageHero>
       <ErrorNote error={error ?? list.error} />
 
       {!list.data ? <Loading /> : groups.size ? (

@@ -110,7 +110,20 @@ export function dashboardRoutes(app: FastifyInstance): void {
         GROUP BY 1`,
       [ctx.companyId, startOfLocalDay(ctx.company.timezone, now).toISOString(), userIds, ctx.company.timezone],
     );
-    const hourly = Array.from({ length: 24 }, (_, hour) => ({ hour, observedMinutes: hourlyRows.rows.find((r) => r.hour === hour)?.minutes ?? 0 }));
+    // Mensajes atendidos por hora según la plataforma de mensajería (misma escala de horas, otra unidad).
+    const inboxRows = await db.query(
+      `SELECT extract(hour FROM (h.hour_start AT TIME ZONE $4))::int AS hour, sum(h.inbox_count)::int AS inbox
+         FROM argos_channel_hours h
+         JOIN argos_external_staff s ON s.company_id = h.company_id AND s.provider = h.provider AND s.external_id = h.external_id
+        WHERE h.company_id = $1 AND h.hour_start >= $2::timestamptz AND s.user_id ${inIds(3)}
+        GROUP BY 1`,
+      [ctx.companyId, startOfLocalDay(ctx.company.timezone, now).toISOString(), userIds, ctx.company.timezone],
+    );
+    const hourly = Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      observedMinutes: hourlyRows.rows.find((r) => r.hour === hour)?.minutes ?? 0,
+      inbox: inboxRows.rows.find((r) => r.hour === hour)?.inbox ?? 0,
+    }));
 
     // Línea del día: los turnos de hoy de cada persona, minuto a minuto agrupados en tramos.
     const todays = await db.query(
