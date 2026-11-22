@@ -8,7 +8,7 @@ const app = document.getElementById('app');
 const logoutBtn = document.getElementById('logout');
 let ui = { busy: false, error: '', notice: '', panel: null }; // panel: 'pause' | 'incident' | 'end' | 'order' | null
 // Borrador del pedido: se guarda aparte para que no se pierda lo escrito si la ventana se vuelve a pintar.
-const EMPTY_ORDER = { customerName: '', phone: '', city: '', address: '', notes: '', product: '', qty: '1', price: '', payment: 'contraentrega' };
+const EMPTY_ORDER = { customerName: '', phone: '', city: '', address: '', neighborhood: '', notes: '', products: '', total: '', payment: 'contraentrega' };
 let draft = { ...EMPTY_ORDER };
 // La ventanita de la extensión se cierra en cuanto se hace clic fuera (por ejemplo, para copiar un dato del chat).
 // Por eso: (1) el borrador se guarda en cada tecla y se recupera al volver a abrir, y
@@ -182,7 +182,7 @@ function orderForm() {
     clearTimeout(validateTimer);
     if (!draft.address.trim() && !draft.phone.trim()) return void validationBox.replaceChildren();
     validateTimer = setTimeout(async () => {
-      const res = await chrome.runtime.sendMessage({ type: 'validateOrder', data: { address: draft.address, city: draft.city, phone: draft.phone, customerName: draft.customerName } }).catch(() => null);
+      const res = await chrome.runtime.sendMessage({ type: 'validateOrder', data: { address: draft.address, neighborhood: draft.neighborhood, city: draft.city, phone: draft.phone, customerName: draft.customerName } }).catch(() => null);
       if (res?.ok) showValidation(validationBox, res.result);
     }, 600);
   };
@@ -191,10 +191,18 @@ function orderForm() {
     input.addEventListener('input', () => {
       draft[key] = input.value;
       saveDraft();
-      if (['address', 'city', 'phone', 'customerName'].includes(key)) validate();
+      if (['address', 'neighborhood', 'city', 'phone', 'customerName'].includes(key)) validate();
     });
     return h('label', {}, label, input);
   };
+  // Campo abierto: la vendedora escribe todos los productos como quiera.
+  const productsArea = h('textarea', { maxlength: '400', placeholder: 'Ej.: 2 fajas talla M negras y 1 crema reductora' });
+  productsArea.value = draft.products;
+  productsArea.addEventListener('input', () => {
+    draft.products = productsArea.value;
+    saveDraft();
+  });
+  const productsField = h('label', {}, 'Productos', productsArea);
   const payment = h('select', {}, h('option', { value: 'contraentrega' }, 'Contraentrega'), h('option', { value: 'pagado' }, 'Ya pagado'));
   payment.value = draft.payment;
   payment.addEventListener('change', () => {
@@ -202,18 +210,19 @@ function orderForm() {
     saveDraft();
   });
   const submit = async () => {
-    const qty = Math.max(1, Math.round(Number(draft.qty) || 1));
-    const price = Math.max(0, Math.round(Number(draft.price) || 0));
-    const missing = !draft.customerName.trim() || !draft.phone.trim() || !draft.city.trim() || draft.address.trim().length < 5 || !draft.product.trim();
-    if (missing) return void ((ui.error = 'Completa nombre, WhatsApp, ciudad, dirección y producto.'), render());
+    const total = Math.max(0, Math.round(Number(String(draft.total).replace(/[^\d]/g, '')) || 0));
+    const missing = !draft.customerName.trim() || !draft.phone.trim() || !draft.city.trim() || draft.address.trim().length < 5 || !draft.neighborhood.trim() || !draft.products.trim();
+    if (missing) return void ((ui.error = 'Completa nombre, WhatsApp, dirección, barrio, ciudad y productos.'), render());
+    if (!total && draft.payment === 'contraentrega') return void ((ui.error = 'Escribe el valor total a cobrar.'), render());
     ui = { ...ui, busy: true, error: '', notice: '' };
     render();
     const res = await chrome.runtime
       .sendMessage({
         type: 'createOrder',
         order: {
-          customerName: draft.customerName.trim(), phone: draft.phone.trim(), city: draft.city.trim(), address: draft.address.trim(), notes: draft.notes.trim(),
-          payment: draft.payment, items: [{ name: draft.product.trim(), qty, price }],
+          customerName: draft.customerName.trim(), phone: draft.phone.trim(), city: draft.city.trim(), address: draft.address.trim(), neighborhood: draft.neighborhood.trim(), notes: draft.notes.trim(),
+          // Los productos van como texto libre (pueden ser varios) con el valor total del pedido.
+          payment: draft.payment, items: [{ free: true, name: draft.products.trim(), qty: 1, price: total }],
         },
       })
       .catch(() => ({ ok: false, message: 'La extensión no respondió. Vuelve a abrir esta ventana.' }));
@@ -234,13 +243,14 @@ function orderForm() {
     field('customerName', 'Nombre del cliente', { autocomplete: 'off' }),
     field('phone', 'WhatsApp del cliente', { inputmode: 'tel', placeholder: '300 123 4567', autocomplete: 'off' }),
     h('div', { class: 'row' }, field('city', 'Ciudad', { autocomplete: 'off' }), h('label', {}, 'Pago', payment)),
-    field('address', 'Dirección completa', { placeholder: 'Calle, número, barrio, apto', autocomplete: 'off' }),
+    field('address', 'Dirección', { placeholder: 'Calle 10 # 5-20 apto 201', autocomplete: 'off' }),
+    field('neighborhood', 'Barrio', { autocomplete: 'off' }),
     validationBox,
     field('notes', 'Indicaciones (opcional)', { autocomplete: 'off' }),
-    field('product', 'Producto', { autocomplete: 'off' }),
-    h('div', { class: 'row' }, field('qty', 'Cantidad', { type: 'number', min: '1' }), field('price', 'Precio unitario', { type: 'number', min: '0', placeholder: '0' })),
+    productsField,
+    field('total', 'Valor total a cobrar', { inputmode: 'numeric', placeholder: '120000', autocomplete: 'off' }),
     h('div', { class: 'row' }, h('button', { onclick: () => ((ui.panel = null), (ui.error = ''), render()) }, 'Volver'), hasDraft() ? h('button', { onclick: () => (clearDraft(), render()) }, 'Limpiar') : null, h('button', { class: 'primary', disabled: ui.busy, onclick: submit }, ui.busy ? 'Creando…' : 'Crear pedido')),
-    h('span', { class: 'small muted' }, 'Queda a tu nombre. Si lleva varios productos, créalo desde la plataforma web.'),
+    h('span', { class: 'small muted' }, 'El pedido queda a tu nombre.'),
   );
 }
 

@@ -22,7 +22,7 @@ export interface Order {
   address: string;
   city: string;
   notes: string;
-  items: { name: string; qty: number; price: number }[];
+  items: { name: string; qty: number; price: number; free?: boolean }[];
   total: number;
   payment: string;
   status: string;
@@ -44,7 +44,8 @@ interface Outgoing {
 
 const money = (n: number) => `$${n.toLocaleString('es-CO')}`;
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? '';
-const itemsText = (o: Order) => o.items.map((i) => `${i.qty} × ${i.name}`).join(', ');
+// Un producto escrito como texto libre (p. ej. «2 fajas talla M y 1 crema») se muestra tal cual, sin cantidad delante.
+const itemsText = (o: Order) => o.items.map((i) => (i.free ? i.name : `${i.qty} × ${i.name}`)).join(', ');
 /** Si al validador le falta algo de la dirección, el bot se lo pide al cliente en el mismo mensaje. */
 const missingLine = (o: Order) => {
   const m = o.address_check?.missing ?? [];
@@ -75,7 +76,11 @@ export const MESSAGES = {
     body: `Actualizamos la dirección de tu pedido ${o.code}: ${o.address}, ${o.city}. ${payLine(o)}${missingLine(o)} ¿Confirmas?`,
     buttons: CONFIRM_BUTTONS,
   }),
-  pedir_direccion: (): Outgoing => ({ template: 'hermes_pedir_direccion', body: 'Claro. Escríbenos la dirección completa (calle, número, barrio, apartamento o indicaciones) y la ciudad, en un solo mensaje.' }),
+  pedir_direccion: (): Outgoing => ({ template: 'hermes_pedir_direccion', body: 'Claro. Escríbenos la dirección completa en un solo mensaje, así: Calle 10 # 5-20, barrio Centro, apto 201.' }),
+  direccion_incompleta: (missing: string[]): Outgoing => ({
+    template: 'hermes_direccion_incompleta',
+    body: `Gracias. Para poder despachar aún nos falta ${missing.join(' y ') || 'completar la dirección'}. Escríbela completa así: Calle 10 # 5-20, barrio Centro, apto 201.`,
+  }),
   confirmado: (o: Order): Outgoing => ({ template: 'hermes_confirmado', body: `¡Listo, ${firstName(o.customer_name)}! Tu pedido ${o.code} quedó confirmado. Te avisaremos por aquí cuando lo despachemos.` }),
   cancelado: (o: Order): Outgoing => ({ template: 'hermes_cancelado', body: `Tu pedido ${o.code} quedó cancelado. Si fue un error, respóndenos y lo revisamos.` }),
   guia: (o: Order): Outgoing => ({
@@ -256,8 +261,9 @@ export async function handleInbound(companyId: string, rawPhone: string, input: 
       await send(o, MESSAGES.pedir_direccion());
     } else await toHuman(o, 'El cliente respondió algo que el bot no entiende');
   } else if (o.awaiting === 'direccion' && typed) {
-    await logEvent(o, 'direccion_corregida', `Antes: ${o.address}, ${o.city}`, 'Cliente');
     const check = checkAddress(typed, o.city);
+    if (await stillIncomplete(o, typed, check)) return { orderId: o.id };
+    await logEvent(o, 'direccion_corregida', `Antes: ${o.address}, ${o.city}`, 'Cliente');
     await db.query(`UPDATE hermes_orders SET address_check = $2::jsonb WHERE id = $1`, [o.id, JSON.stringify(check)]);
     o.address_check = check;
     await patch(o, { address: typed, awaiting: 'confirmacion' });
@@ -279,9 +285,11 @@ export async function handleInbound(companyId: string, rawPhone: string, input: 
       await send(o, MESSAGES.novedad_rechazo());
     } else await toHuman(o, 'El cliente respondió a la novedad con un mensaje libre');
   } else if (o.awaiting === 'direccion_novedad' && typed) {
+    const check = checkAddress(typed, o.city);
+    if (await stillIncomplete(o, typed, check)) return { orderId: o.id };
     const incident = await openIncident(o);
     await logEvent(o, 'direccion_corregida', `Antes: ${o.address}, ${o.city}`, 'Cliente');
-    await db.query(`UPDATE hermes_orders SET address_check = $2::jsonb WHERE id = $1`, [o.id, JSON.stringify(checkAddress(typed, o.city))]);
+    await db.query(`UPDATE hermes_orders SET address_check = $2::jsonb WHERE id = $1`, [o.id, JSON.stringify(check)]);
     await patch(o, { address: typed, awaiting: null });
     if (incident) await db.query(`UPDATE hermes_incidents SET customer_choice = 'corrige_direccion', status = 'por_gestionar' WHERE id = $1`, [incident.id]);
     await setAttention(o, 'El cliente corrigió la dirección: avisar a la transportadora');
@@ -292,6 +300,20 @@ export async function handleInbound(companyId: string, rawPhone: string, input: 
     await setAttention(o, 'El cliente escribió sobre un pedido ya cerrado');
   }
   return { orderId: o.id };
+}
+
+/**
+ * El cliente envió una dirección a la que aún le faltan datos obligatorios.
+ * No se acepta: la primera vez el bot le dice qué falta y cómo escribirla; si vuelve a llegar incompleta, pasa a una persona.
+ * Devuelve true si la dirección NO se aceptó.
+ */
+async function stillIncomplete(o: Order, typed: string, check: ReturnType<typeof checkAddress>): Promise<boolean> {
+  if (!check.issues.some((i) => i.severity === 'error')) return false;
+  const before = await db.query(`SELECT count(*)::int AS n FROM hermes_events WHERE order_id = $1 AND type = 'direccion_incompleta'`, [o.id]);
+  await logEvent(o, 'direccion_incompleta', `El cliente escribió: ${typed}`, 'Cliente');
+  if (before.rows[0].n >= 1) await toHuman(o, 'El cliente no logra dar la dirección completa: llamarlo para completarla');
+  else await send(o, MESSAGES.direccion_incompleta(check.missing));
+  return true;
 }
 
 /** Pasa la conversación a una persona. Solo avisa al cliente la primera vez, para no repetirle el mismo mensaje. */

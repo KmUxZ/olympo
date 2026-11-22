@@ -9,7 +9,7 @@ export interface Issue {
   severity: 'error' | 'aviso';
 }
 export interface AddressCheck {
-  /** completa: tiene vía, placa y barrio · revisar: falta un dato menor · incompleta: falta lo esencial */
+  /** completa: no falta nada · revisar: solo avisos (zona rural, ciudad no reconocida) · incompleta: falta un dato obligatorio y el pedido no se puede crear */
   level: 'completa' | 'revisar' | 'incompleta';
   issues: Issue[];
   normalizedAddress: string;
@@ -78,12 +78,22 @@ const VIA_NAMES: Record<string, string> = {
 };
 const tidy = (n: string) => n.replace(/\s+/g, ' ').trim().replace(/^(\d+)\s?([a-z])\b/i, (_m, d, l) => `${d}${l.toUpperCase()}`);
 
+/** Une la dirección y el barrio (que en los formularios va en su propio campo) en un solo texto. */
+export function composeAddress(address: string, neighborhood?: string | null): string {
+  const a = address.replace(/\s+/g, ' ').trim();
+  const n = (neighborhood ?? '').replace(/\s+/g, ' ').trim().replace(/^barrio\s+/i, '');
+  if (!n || plain(a).includes(plain(n))) return a;
+  return `${a}, barrio ${n}`;
+}
+
 export function checkAddress(rawAddress: string, rawCity: string): AddressCheck {
   const address = rawAddress.replace(/\s+/g, ' ').trim();
   const issues: Issue[] = [];
   const missing: string[] = [];
-  const add = (code: string, message: string, ask?: string) => {
-    issues.push({ code, message, severity: 'aviso' });
+  // Los datos obligatorios (vía, número, barrio, apartamento si hay edificio, ciudad) son errores:
+  // sin ellos el pedido no se crea. Zona rural y ciudad no reconocida son avisos.
+  const add = (code: string, message: string, ask?: string, severity: Issue['severity'] = 'error') => {
+    issues.push({ code, message, severity });
     if (ask) missing.push(ask);
   };
 
@@ -94,20 +104,19 @@ export function checkAddress(rawAddress: string, rawCity: string): AddressCheck 
   let essential = true;
 
   if (rural) {
-    add('rural', 'Parece una zona rural (vereda, finca o kilómetro). Muchas transportadoras no entregan en puerta: confirma un punto de referencia y que el cliente pueda recoger en oficina.', 'un punto de referencia claro para la entrega');
+    add('rural', 'Parece una zona rural (vereda, finca o kilómetro). Muchas transportadoras no entregan en puerta: confirma un punto de referencia y que el cliente pueda recoger en oficina.', 'un punto de referencia claro para la entrega', 'aviso');
   } else if (!plate && !block) {
     essential = false;
     if (!hasVia) add('sin_via', 'No se reconoce el tipo de vía (Calle, Carrera, Avenida, Diagonal, Transversal o Manzana).', 'la dirección con calle o carrera y su número');
     else add('sin_placa', 'Falta el número completo de la dirección. Formato esperado: Calle 10 # 5-20.', 'el número completo de la dirección (por ejemplo, # 5-20)');
   }
 
-  if (!rural && !BARRIO_RE.test(address)) add('sin_barrio', 'No se indica el barrio. Ayuda mucho al repartidor; escríbelo con la palabra «barrio».', 'el barrio');
+  if (!rural && !BARRIO_RE.test(address)) add('sin_barrio', 'Falta el barrio.', 'el barrio');
   if (COMPLEX_RE.test(address) && !UNIT_RE.test(address)) add('sin_unidad', 'Menciona edificio, torre o conjunto pero no el apartamento o la casa.', 'el número de apartamento o casa');
-  if (address.length < 12) add('muy_corta', 'La dirección es muy corta para ser completa.');
 
   const city = findCity(rawCity);
   if (!rawCity.trim()) add('sin_ciudad', 'Falta la ciudad.', 'la ciudad');
-  else if (!city) add('ciudad_desconocida', `No reconocemos «${rawCity.trim()}» entre las ciudades principales. Verifica el nombre y, si es un municipio pequeño, la cobertura de la transportadora.`);
+  else if (!city) add('ciudad_desconocida', `No reconocemos «${rawCity.trim()}» entre las ciudades principales. Verifica el nombre y, si es un municipio pequeño, la cobertura de la transportadora.`, undefined, 'aviso');
 
   // Forma estándar de la parte principal, conservando el resto tal como se escribió.
   let normalized = address;
@@ -116,8 +125,8 @@ export function checkAddress(rawAddress: string, rawCity: string): AddressCheck 
     normalized = (address.slice(0, plate.index) + head + address.slice(plate.index + plate[0].length)).replace(/\s+/g, ' ').trim();
   }
 
-  const minor = issues.filter((i) => !['rural', 'ciudad_desconocida'].includes(i.code)).length;
-  const level: AddressCheck['level'] = !essential ? 'incompleta' : minor > 0 || rural || !city ? 'revisar' : 'completa';
+  const blocking = !essential || issues.some((i) => i.severity === 'error');
+  const level: AddressCheck['level'] = blocking ? 'incompleta' : issues.length ? 'revisar' : 'completa';
   return { level, issues, normalizedAddress: normalized, city, rural, missing };
 }
 

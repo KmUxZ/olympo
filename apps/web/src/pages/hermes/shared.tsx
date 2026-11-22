@@ -27,6 +27,8 @@ export const INCIDENT_STATUS: Record<string, { label: string; tone: string }> = 
   devolucion: { label: 'Terminó en devolución', tone: '' },
 };
 export const CUSTOMER_CHOICE: Record<string, string> = { reprogramar: 'Pide reprogramar la entrega', corrige_direccion: 'Corrigió la dirección', rechaza: 'Ya no quiere el pedido' };
+/** Texto de los productos de un pedido. Los escritos como texto libre se muestran tal cual. */
+export const itemsLabel = (items: { name: string; qty: number; free?: boolean }[]) => items.map((i) => (i.free ? i.name : `${i.qty} × ${i.name}`)).join(', ');
 export const money = (n: number) => `$${Number(n ?? 0).toLocaleString('es-CO')}`;
 
 const STEPS = ['por_confirmar', 'confirmado', 'despachado', 'en_reparto', 'entregado'];
@@ -83,7 +85,7 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
           <div className="grow">
             <strong style={{ fontSize: 'var(--text-lg)' }}>{o.customerName}</strong>
             <div className="small muted">{o.phone} · {o.address}, {o.city}{o.notes ? ` · ${o.notes}` : ''}</div>
-            <div className="small muted">{o.items.map((i: { qty: number; name: string }) => `${i.qty} × ${i.name}`).join(', ')} · <strong>{money(o.total)}</strong> {o.payment === 'pagado' ? '(ya pagado)' : 'contraentrega'}{o.sellerName ? ` · Venta de ${o.sellerName}` : ''}</div>
+            <div className="small muted">{itemsLabel(o.items)} · <strong>{money(o.total)}</strong> {o.payment === 'pagado' ? '(ya pagado)' : 'contraentrega'}{o.sellerName ? ` · Venta de ${o.sellerName}` : ''}</div>
             {o.trackingNumber && <div className="small">Guía <span className="mono">{o.trackingNumber}</span> · {o.carrier}{o.trackingUrl && <> · <a href={o.trackingUrl} target="_blank" rel="noopener noreferrer">Rastrear</a></>}</div>}
           </div>
           <Badge tone={st?.tone}>{st?.label ?? o.status}</Badge>

@@ -7,7 +7,7 @@ import { db } from '../db/db.ts';
 import { auditBy, badRequest, forbidden, guard, notFound, parse } from '../core/http.ts';
 import type { Ctx } from '../core/http.ts';
 import * as bot from './bot.ts';
-import { checkAddress, checkContact, summarizeHistory } from './address.ts';
+import { checkAddress, checkContact, composeAddress, summarizeHistory } from './address.ts';
 
 /** Historial de pedidos de un teléfono en la empresa: sirve para estimar el riesgo de devolución. */
 async function customerHistory(companyId: string, phone: string) {
@@ -31,10 +31,11 @@ const orderBody = z.object({
   customerName: z.string().trim().min(2).max(120),
   phone: z.string().trim().min(7).max(25),
   address: z.string().trim().min(5).max(300),
+  neighborhood: z.string().trim().max(80).default(''),
   city: z.string().trim().min(2).max(80),
   department: z.string().trim().max(80).default(''),
   notes: z.string().trim().max(300).default(''),
-  items: z.array(z.object({ name: z.string().trim().min(1).max(120), qty: z.number().int().min(1).max(999), price: z.number().int().min(0).max(100_000_000) })).min(1).max(30),
+  items: z.array(z.object({ free: z.boolean().optional(), name: z.string().trim().min(1).max(400), qty: z.number().int().min(1).max(999), price: z.number().int().min(0).max(100_000_000) })).min(1).max(30),
   payment: z.enum(['contraentrega', 'pagado']).default('contraentrega'),
   sellerUserId: z.uuid().nullable().optional(),
   externalRef: z.string().trim().max(120).default(''),
@@ -99,9 +100,9 @@ export function hermesRoutes(app: FastifyInstance): void {
    * Revisa estructura de la dirección, ciudad, teléfono, nombre e historial del cliente.
    */
   app.post('/api/hermes/validate', guard(), async (req) => {
-    const b = parse(z.object({ address: z.string().max(300).default(''), city: z.string().max(80).default(''), phone: z.string().max(25).default(''), customerName: z.string().max(120).default('') }), req.body);
+    const b = parse(z.object({ address: z.string().max(300).default(''), city: z.string().max(80).default(''), phone: z.string().max(25).default(''), customerName: z.string().max(120).default(''), neighborhood: z.string().max(80).default('') }), req.body);
     const phone = bot.normalizePhone(b.phone);
-    const address = b.address.trim() ? checkAddress(b.address, b.city) : null;
+    const address = b.address.trim() ? checkAddress(composeAddress(b.address, b.neighborhood), b.city) : null;
     // Solo se opina de lo que ya se escribió.
     const contact = checkContact(phone, b.customerName).filter((i) => (i.code.startsWith('telefono') ? Boolean(b.phone.trim()) : Boolean(b.customerName.trim())));
     const history = phone.length >= 10 ? await customerHistory(req.ctx.companyId, phone) : null;
@@ -113,7 +114,11 @@ export function hermesRoutes(app: FastifyInstance): void {
     const b = parse(orderBody, req.body);
     const phone = bot.normalizePhone(b.phone);
     if (phone.length < 10) throw badRequest('El teléfono no parece válido. Escríbelo con indicativo o como celular de 10 dígitos.');
-    const addressCheck = checkAddress(b.address, b.city);
+    const fullAddress = composeAddress(b.address, b.neighborhood);
+    const addressCheck = checkAddress(fullAddress, b.city);
+    // Una dirección incompleta es la primera causa de devolución: sin los datos obligatorios el pedido no se crea.
+    const blocking = addressCheck.issues.filter((i) => i.severity === 'error');
+    if (blocking.length) throw badRequest(`La dirección está incompleta. ${blocking.map((i) => i.message).join(' ')}`, 'direccion_incompleta');
     const history = await customerHistory(ctx.companyId, phone);
     const sellerId = ctx.role === 'seller' ? ctx.userId : (b.sellerUserId ?? null);
     if (sellerId && sellerId !== ctx.userId) {
@@ -137,7 +142,7 @@ export function hermesRoutes(app: FastifyInstance): void {
       `INSERT INTO hermes_orders (company_id, code, customer_name, phone, address, city, department, notes, items, total, payment, seller_user_id, external_ref, created_by, address_check, customer_risk)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $14, $15::jsonb, $16) RETURNING *`,
       [
-        ctx.companyId, code, b.customerName, phone, b.address, addressCheck.city?.name ?? b.city, b.department || addressCheck.city?.department || '', b.notes,
+        ctx.companyId, code, b.customerName, phone, fullAddress, addressCheck.city?.name ?? b.city, b.department || addressCheck.city?.department || '', b.notes,
         JSON.stringify(b.items), total, b.payment, sellerId, b.externalRef, ctx.userId, JSON.stringify(addressCheck), history.risk,
       ],
     );

@@ -3,10 +3,10 @@ import { useAuth } from '../../auth';
 import { api, useApi } from '../../lib/api';
 import { fmtDateTime } from '../../lib/format';
 import { Badge, Empty, ErrorNote, Field, FormModal, Freshness, Loading, PageHero } from '../../components/ui';
-import { money, OrderDetailModal, ORDER_STATUS, ValidationBox } from './shared';
+import { itemsLabel, money, OrderDetailModal, ORDER_STATUS, ValidationBox } from './shared';
 import type { Validation } from './shared';
 
-interface Order { id: string; code: string; customerName: string; phone: string; city: string; items: { name: string; qty: number }[]; total: number; payment: string; status: string; attention: boolean; attentionReason: string; addressCheck: { level: string } | null; customerRisk: string; sellerName: string | null; carrier: string; trackingNumber: string; createdAt: string }
+interface Order { id: string; code: string; customerName: string; phone: string; city: string; items: { name: string; qty: number; free?: boolean }[]; total: number; payment: string; status: string; attention: boolean; attentionReason: string; addressCheck: { level: string } | null; customerRisk: string; sellerName: string | null; carrier: string; trackingNumber: string; createdAt: string }
 
 const TABS: [string, string][] = [['', 'Todos'], ['atencion', 'Por atender'], ['por_confirmar', 'Por confirmar'], ['confirmado', 'Por despachar'], ['despachado', 'Despachados'], ['en_reparto', 'En reparto'], ['novedad', 'Con novedad'], ['entregado', 'Entregados'], ['devuelto', 'Devueltos'], ['cancelado', 'Cancelados']];
 
@@ -71,7 +71,7 @@ export function HermesOrders() {
                       {o.addressCheck && o.addressCheck.level !== 'completa' && <span className="sub" style={{ color: 'var(--color-warn)' }}>Dirección {o.addressCheck.level === 'incompleta' ? 'incompleta' : 'por revisar'}</span>}
                       {o.customerRisk === 'alto' && <span className="sub" style={{ color: 'var(--color-danger)' }}>Riesgo alto de devolución</span>}
                     </td>
-                    <td style={{ maxWidth: 240 }}>{o.items.map((i) => `${i.qty} × ${i.name}`).join(', ')}</td>
+                    <td style={{ maxWidth: 240 }}>{itemsLabel(o.items)}</td>
                     <td className="nowrap">{money(o.total)}{o.payment === 'pagado' && <span className="sub">Ya pagado</span>}</td>
                     <td>
                       <Badge tone={ORDER_STATUS[o.status]?.tone}>{ORDER_STATUS[o.status]?.label ?? o.status}</Badge>
@@ -109,7 +109,7 @@ export function HermesOrders() {
 
 function CreateOrderModal({ canAssign, onClose, onSaved }: { canAssign: boolean; onClose: () => void; onSaved: (r: { id: string; code: string; possibleDuplicateOf: string | null }) => Promise<void> }) {
   const users = useApi<{ users: { id: string; name: string; role: string; status: string }[] }>(canAssign ? '/api/users' : null);
-  const [f, setF] = useState({ customerName: '', phone: '', address: '', city: '', notes: '', payment: 'contraentrega', sellerUserId: '', externalRef: '' });
+  const [f, setF] = useState({ customerName: '', phone: '', address: '', neighborhood: '', city: '', notes: '', payment: 'contraentrega', sellerUserId: '', externalRef: '' });
   const [items, setItems] = useState([{ name: '', qty: '1', price: '' }]);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
   const setItem = (i: number, k: 'name' | 'qty' | 'price', v: string) => setItems(items.map((it, n) => (n === i ? { ...it, [k]: v } : it)));
@@ -121,10 +121,11 @@ function CreateOrderModal({ canAssign, onClose, onSaved }: { canAssign: boolean;
   useEffect(() => {
     if (!f.address.trim() && !f.phone.trim()) return setValidation(null);
     const id = setTimeout(() => {
-      api('POST', '/api/hermes/validate', { address: f.address, city: f.city, phone: f.phone, customerName: f.customerName }).then(setValidation).catch(() => {});
+      api('POST', '/api/hermes/validate', { address: f.address, neighborhood: f.neighborhood, city: f.city, phone: f.phone, customerName: f.customerName }).then(setValidation).catch(() => {});
     }, 450);
     return () => clearTimeout(id);
-  }, [f.address, f.city, f.phone, f.customerName]);
+  }, [f.address, f.neighborhood, f.city, f.phone, f.customerName]);
+  const blocked = Boolean(validation?.address?.issues.some((i) => i.severity === 'error'));
 
   async function save() {
     if (!valid.length) throw new Error('Añade al menos un producto.');
@@ -143,10 +144,12 @@ function CreateOrderModal({ canAssign, onClose, onSaved }: { canAssign: boolean;
         <div className="grow"><Field label="WhatsApp del cliente" hint="Celular de 10 dígitos o con indicativo."><input required inputMode="tel" value={f.phone} onChange={set('phone')} placeholder="300 123 4567" /></Field></div>
       </div>
       <div className="row">
-        <div className="grow" style={{ flex: 2 }}><Field label="Dirección completa" hint="Calle, número, barrio, apartamento."><input required minLength={5} value={f.address} onChange={set('address')} /></Field></div>
+        <div className="grow" style={{ flex: 2 }}><Field label="Dirección" hint="Calle o carrera, número y, si aplica, torre y apartamento. Ej.: Calle 10 # 5-20 apto 201"><input required minLength={5} value={f.address} onChange={set('address')} /></Field></div>
+        <div className="grow"><Field label="Barrio"><input required minLength={2} maxLength={80} value={f.neighborhood} onChange={set('neighborhood')} /></Field></div>
         <div className="grow"><Field label="Ciudad"><input required minLength={2} value={f.city} onChange={set('city')} /></Field></div>
       </div>
       <ValidationBox value={validation} />
+      {blocked && <div className="alert danger" role="alert">Completa la dirección para poder crear el pedido. Una dirección incompleta es la causa más frecuente de devolución.</div>}
       <Field label="Indicaciones para la entrega (opcional)"><input maxLength={300} value={f.notes} onChange={set('notes')} placeholder="Ej.: portería, dejar con el vecino, llamar antes" /></Field>
 
       <fieldset className="stack" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-3)' }}>
