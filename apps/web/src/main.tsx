@@ -23,6 +23,7 @@ import { Messages } from './pages/Messages';
 import { Coaching } from './pages/Coaching';
 import { Quality } from './pages/Quality';
 import { HermesOrders } from './pages/hermes/Orders';
+import { HermesChats } from './pages/hermes/Chats';
 import { HermesIncidents } from './pages/hermes/Incidents';
 import { HermesPanel } from './pages/hermes/Panel';
 import '@fontsource-variable/montserrat/wght.css';
@@ -64,6 +65,7 @@ function App() {
         )}
         {has('hermes') && (
           <>
+            <Route path="/hermes/chats" element={<Only roles={['admin', 'supervisor']}><HermesChats /></Only>} />
             <Route path="/hermes/pedidos" element={<HermesOrders />} />
             <Route path="/hermes/novedades" element={<Only roles={['admin', 'supervisor']}><HermesIncidents /></Only>} />
             <Route path="/hermes/panel" element={<Only roles={['admin', 'supervisor']}><HermesPanel /></Only>} />

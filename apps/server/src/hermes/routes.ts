@@ -45,6 +45,7 @@ const ORDER_COLUMNS = `o.id, o.code, o.customer_name AS "customerName", o.phone,
   o.status, o.awaiting, o.attention, o.attention_reason AS "attentionReason", o.seller_user_id AS "sellerUserId", u.name AS "sellerName",
   o.source, o.external_ref AS "externalRef", o.carrier, o.tracking_number AS "trackingNumber", o.tracking_url AS "trackingUrl",
   o.address_check AS "addressCheck", o.customer_risk AS "customerRisk",
+  o.bot_paused AS "botPaused", o.taken_by AS "takenBy", o.attention_at AS "attentionAt",
   o.reminders_sent AS "remindersSent", o.created_at AS "createdAt", o.confirmed_at AS "confirmedAt", o.dispatched_at AS "dispatchedAt",
   o.out_for_delivery_at AS "outForDeliveryAt", o.delivered_at AS "deliveredAt", o.returned_at AS "returnedAt", o.cancelled_at AS "cancelledAt", o.cancel_reason AS "cancelReason"`;
 
@@ -215,6 +216,8 @@ export function hermesRoutes(app: FastifyInstance): void {
     const b = parse(z.object({ body: z.string().trim().min(1).max(1000) }), req.body);
     const o = await loadOrder(req.ctx, id);
     await bot.send(o, { template: '', body: b.body }, req.ctx.name);
+    // Al responder una persona, el caso deja de estar pendiente: ahora se espera al cliente.
+    await db.query(`UPDATE hermes_orders SET attention = false, attention_reason = '', seen_at = now(), updated_at = now() WHERE id = $1`, [id]);
     return { ok: true };
   });
 
@@ -228,6 +231,75 @@ export function hermesRoutes(app: FastifyInstance): void {
     const o = await loadOrder(req.ctx, inc.order_id);
     await db.query(`UPDATE hermes_orders SET attention = false, attention_reason = '', awaiting = NULL, updated_at = now() WHERE id = $1`, [o.id]);
     await bot.logEvent(o, 'novedad_gestionada', b.resolution, req.ctx.name);
+    return { ok: true };
+  });
+
+  // ───────── Bandeja de chats ─────────
+  /**
+   * Una conversación por pedido, con "quién tiene la pelota":
+   *   persona  → necesita que alguien del equipo responda o gestione
+   *   cliente  → el bot (o una persona) preguntó y se espera la respuesta del cliente
+   *   proceso  → no se espera a nadie: el pedido sigue su curso logístico
+   *   cerrado  → entregado, devuelto o cancelado
+   * Se ordena por quién lleva más tiempo esperando.
+   */
+  app.get('/api/hermes/chats', guard('admin', 'supervisor'), async (req) => {
+    const q = parse(z.object({ ball: z.enum(['persona', 'cliente', 'proceso', 'cerrado']).optional(), q: z.string().trim().max(80).optional() }), req.query);
+    const FINAL = `('entregado', 'devuelto', 'cancelado')`;
+    const BALL = `CASE WHEN o.attention THEN 'persona' WHEN o.status IN ${FINAL} THEN 'cerrado' WHEN o.awaiting IS NOT NULL THEN 'cliente' ELSE 'proceso' END`;
+    const params: unknown[] = [req.ctx.companyId];
+    let where = '';
+    if (q.ball) {
+      params.push(q.ball);
+      where += ` AND ${BALL} = $${params.length}`;
+    }
+    if (q.q) {
+      params.push(`%${q.q.toLowerCase()}%`);
+      where += ` AND (lower(o.customer_name) LIKE $${params.length} OR o.phone LIKE $${params.length} OR lower(o.code) LIKE $${params.length} OR o.tracking_number LIKE $${params.length})`;
+    }
+    const [rows, counts] = await Promise.all([
+      db.query(
+        `SELECT o.id, o.code, o.customer_name AS "customerName", o.phone, o.city, o.status, o.awaiting, o.attention, o.attention_reason AS "attentionReason",
+                o.bot_paused AS "botPaused", o.taken_by AS "takenBy", o.total, o.tracking_number AS "trackingNumber", ${BALL} AS ball,
+                CASE WHEN o.attention THEN o.attention_at WHEN o.awaiting IS NOT NULL THEN o.last_outbound_at END AS "waitingSince",
+                (o.last_inbound_at IS NOT NULL AND (o.seen_at IS NULL OR o.last_inbound_at > o.seen_at)) AS unread,
+                m.body AS "lastBody", m.direction AS "lastDirection", m.sender AS "lastSender", coalesce(m.created_at, o.created_at) AS "lastAt"
+           FROM hermes_orders o
+           LEFT JOIN LATERAL (SELECT body, direction, sender, created_at FROM hermes_messages WHERE order_id = o.id ORDER BY created_at DESC LIMIT 1) m ON true
+          WHERE o.company_id = $1 ${where}
+          ORDER BY o.attention DESC, CASE WHEN o.attention THEN o.attention_at END ASC NULLS LAST, coalesce(m.created_at, o.created_at) DESC
+          LIMIT 200`,
+        params,
+      ),
+      db.query(`SELECT ${BALL} AS ball, count(*)::int AS n FROM hermes_orders o WHERE o.company_id = $1 GROUP BY 1`, [req.ctx.companyId]),
+    ]);
+    return { serverTime: new Date(), chats: rows.rows, counts: Object.fromEntries(counts.rows.map((c) => [c.ball, c.n])) };
+  });
+
+  /** Marca la conversación como vista por el equipo. */
+  app.post('/api/hermes/orders/:id/seen', guard('admin', 'supervisor'), async (req) => {
+    const { id } = parse(idParam, req.params);
+    await loadOrder(req.ctx, id);
+    await db.query(`UPDATE hermes_orders SET seen_at = now() WHERE id = $1`, [id]);
+    return { ok: true };
+  });
+
+  /** Tomar la conversación (pausa el bot en ese pedido) o devolverla al bot. */
+  app.post('/api/hermes/orders/:id/takeover', guard('admin', 'supervisor'), async (req) => {
+    const { id } = parse(idParam, req.params);
+    const b = parse(z.object({ paused: z.boolean() }), req.body);
+    const o = await loadOrder(req.ctx, id);
+    await bot.setBotPaused(o, b.paused, req.ctx.name);
+    return { ok: true };
+  });
+
+  /** Vuelve a enviar la solicitud de confirmación (p. ej. tras hablar con el cliente). */
+  app.post('/api/hermes/orders/:id/resend-confirmation', guard('admin', 'supervisor'), async (req) => {
+    const { id } = parse(idParam, req.params);
+    const o = await loadOrder(req.ctx, id);
+    if (o.status !== 'por_confirmar') throw badRequest('Solo se puede reenviar mientras el pedido está por confirmar.');
+    await bot.startConfirmation(o);
+    await db.query(`UPDATE hermes_orders SET attention = false, attention_reason = '', updated_at = now() WHERE id = $1`, [id]);
     return { ok: true };
   });
 

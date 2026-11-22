@@ -196,3 +196,9 @@ la ciudad contra un catálogo de ciudades principales, el teléfono, el nombre y
 rechazos previos con ese número). Los avisos no bloquean; un teléfono incompleto sí. Si falta algo de la dirección, el bot
 se lo pide al cliente en el mensaje de confirmación. Un cliente con devoluciones y ninguna entrega queda marcado para atención.
 Límite: valida la forma, no que la dirección exista ni la cobertura de la transportadora (pendiente: geocodificación y API de la transportadora).
+
+**Chats (Hermes).** Bandeja de tres paneles con una conversación por pedido. Cada una indica quién tiene la pelota
+(persona, cliente, en curso o cerrado) y cuánto lleva esperando; se ordena por la espera más larga. El hilo mezcla mensajes
+e hitos del pedido. Una persona puede tomar la conversación (pausa el bot en ese pedido) y devolverla; responder como persona
+quita el pendiente. Incluye respuestas sugeridas según el estado, reenvío de la confirmación y marca de no leídos.
+Pendiente: conversaciones de números sin pedido (llegarán con el canal real) y asignación de chats a personas concretas.

@@ -143,8 +143,16 @@ async function patch(o: Order, fields: Record<string, unknown>): Promise<void> {
 }
 
 export async function setAttention(o: Order, reason: string): Promise<void> {
+  // Se conserva el momento en que empezó a esperar: así la bandeja ordena por quién lleva más tiempo.
+  await db.query(`UPDATE hermes_orders SET attention_at = now() WHERE id = $1 AND NOT attention`, [o.id]);
   await patch(o, { attention: true, attention_reason: reason });
   await logEvent(o, 'atencion', reason);
+}
+
+/** Una persona toma la conversación (el bot deja de responder en ese pedido) o se la devuelve al bot. */
+export async function setBotPaused(o: Order, paused: boolean, actor: string): Promise<void> {
+  await patch(o, { bot_paused: paused, taken_by: paused ? actor : '' });
+  await logEvent(o, paused ? 'bot_pausado' : 'bot_reanudado', paused ? `${actor} tomó la conversación` : 'La conversación volvió al bot', actor);
 }
 
 /**
@@ -249,6 +257,12 @@ export async function handleInbound(companyId: string, rawPhone: string, input: 
     [companyId, o?.id ?? null, phone, input.payload ? 'boton' : 'texto', text || input.payload || ''],
   );
   if (!o) return { orderId: null };
+  await db.query(`UPDATE hermes_orders SET last_inbound_at = now() WHERE id = $1`, [o.id]);
+  // Si una persona tomó la conversación, el bot no interviene: solo avisa de que hay un mensaje nuevo.
+  if ((o as Order & { bot_paused?: boolean }).bot_paused) {
+    await setAttention(o, 'El cliente escribió (conversación a cargo de una persona)');
+    return { orderId: o.id };
+  }
 
   let intent = input.payload ?? '';
   if (!intent && (o.awaiting === 'confirmacion')) intent = YES.test(typed) ? 'CONFIRMAR' : NO.test(typed) ? 'CANCELAR' : '';
@@ -325,7 +339,7 @@ async function toHuman(o: Order, reason: string): Promise<void> {
 
 // ───────── Tarea periódica: recordatorios y casos sin respuesta ─────────
 export async function runReminders(): Promise<void> {
-  const { rows } = await db.query(`SELECT * FROM hermes_orders WHERE status = 'por_confirmar' AND awaiting = 'confirmacion' AND NOT attention`);
+  const { rows } = await db.query(`SELECT * FROM hermes_orders WHERE status = 'por_confirmar' AND awaiting = 'confirmacion' AND NOT attention AND NOT bot_paused`);
   for (const o of rows as Order[]) {
     const { reminderMinutes, escalateMinutes } = await settingsOf(o.company_id);
     const since = (Date.now() - (o.last_outbound_at ?? o.created_at).getTime()) / 60_000;

@@ -31,14 +31,15 @@ export const CUSTOMER_CHOICE: Record<string, string> = { reprogramar: 'Pide repr
 export const itemsLabel = (items: { name: string; qty: number; free?: boolean }[]) => items.map((i) => (i.free ? i.name : `${i.qty} × ${i.name}`)).join(', ');
 export const money = (n: number) => `$${Number(n ?? 0).toLocaleString('es-CO')}`;
 
-const STEPS = ['por_confirmar', 'confirmado', 'despachado', 'en_reparto', 'entregado'];
-const EVENT_LABEL: Record<string, string> = {
+export const STEPS = ['por_confirmar', 'confirmado', 'despachado', 'en_reparto', 'entregado'];
+export const EVENT_LABEL: Record<string, string> = {
+  bot_pausado: 'Una persona tomó la conversación', bot_reanudado: 'La conversación volvió al bot', direccion_incompleta: 'Dirección incompleta', direccion_por_revisar: 'Dirección por revisar',
   creado: 'Pedido creado', confirmacion_enviada: 'Confirmación enviada', recordatorio: 'Recordatorio', confirmado: 'Confirmado', cancelado: 'Cancelado',
   despachado: 'Despachado', en_reparto: 'En reparto', novedad: 'Novedad', novedad_gestionada: 'Novedad gestionada', entregado: 'Entregado', devuelto: 'Devuelto',
   atencion: 'Requiere atención', atendido: 'Atendido', direccion_corregida: 'Dirección corregida',
 };
 
-interface Message { id: string; direction: 'in' | 'out'; kind: string; template: string; body: string; buttons: { label: string; payload: string }[]; status: string; sender: string; createdAt: string }
+export interface Message { id: string; direction: 'in' | 'out'; kind: string; template: string; body: string; buttons: { label: string; payload: string }[]; status: string; sender: string; createdAt: string }
 
 /** Detalle de un pedido: datos, avance, acciones, novedades, historial y la conversación con el cliente. */
 export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: string; onClose: () => void; onChanged?: () => void }) {
