@@ -189,3 +189,10 @@ El envío real se conecta en `bot.send()` (canal) cuando exista el número de lo
 
 **Pendiente:** conector de la transportadora (guías y estados automáticos), canal real de WhatsApp vía Pancake con su webhook
 de mensajes entrantes, y la entrada automática de pedidos desde Pancake.
+
+**Validador de datos de entrega (Hermes).** Antes de crear un pedido, y mientras se escribe en los formularios, Hermes revisa:
+la estructura de la dirección según la nomenclatura colombiana (vía, placa `# 12-34`, barrio, apartamento si hay edificio),
+la ciudad contra un catálogo de ciudades principales, el teléfono, el nombre y el historial del cliente (devoluciones y
+rechazos previos con ese número). Los avisos no bloquean; un teléfono incompleto sí. Si falta algo de la dirección, el bot
+se lo pide al cliente en el mensaje de confirmación. Un cliente con devoluciones y ninguna entrega queda marcado para atención.
+Límite: valida la forma, no que la dirección exista ni la cobertura de la transportadora (pendiente: geocodificación y API de la transportadora).

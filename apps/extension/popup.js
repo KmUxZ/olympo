@@ -163,12 +163,35 @@ function consentCard(state) {
 }
 
 /** Formulario rápido para crear un pedido en Hermes sin salir del chat. */
+let validateTimer = null;
+/** Pinta el resultado del validador en su propio recuadro, sin repintar el formulario (para no perder el foco). */
+function showValidation(box, v) {
+  const LEVEL = { completa: ['ok', 'Dirección completa'], revisar: ['warn', 'Dirección por revisar'], incompleta: ['danger', 'Dirección incompleta'] };
+  const RISK = { alto: ['danger', 'Riesgo alto de devolución'], medio: ['warn', 'Historial mixto'], bueno: ['ok', 'Cliente cumplido'] };
+  const parts = [];
+  if (v?.address) parts.push(h('div', { class: `note ${LEVEL[v.address.level][0]}` }, h('strong', {}, LEVEL[v.address.level][1]), v.address.city ? ` · ${v.address.city.name}, ${v.address.city.department}` : ''));
+  const issues = [...(v?.contact ?? []), ...(v?.address?.issues ?? [])];
+  if (issues.length) parts.push(h('ul', { class: 'small', style: 'margin:0;padding-left:18px' }, issues.map((i) => h('li', {}, i.message))));
+  if (v?.history && RISK[v.history.risk]) parts.push(h('div', { class: `note ${RISK[v.history.risk][0]}` }, h('strong', {}, RISK[v.history.risk][1]), `. ${v.history.message}`));
+  box.replaceChildren(...parts);
+}
+
 function orderForm() {
+  const validationBox = h('div', { style: 'display:grid;gap:6px', 'aria-live': 'polite' });
+  const validate = () => {
+    clearTimeout(validateTimer);
+    if (!draft.address.trim() && !draft.phone.trim()) return void validationBox.replaceChildren();
+    validateTimer = setTimeout(async () => {
+      const res = await chrome.runtime.sendMessage({ type: 'validateOrder', data: { address: draft.address, city: draft.city, phone: draft.phone, customerName: draft.customerName } }).catch(() => null);
+      if (res?.ok) showValidation(validationBox, res.result);
+    }, 600);
+  };
   const field = (key, label, attrs = {}) => {
     const input = h('input', { value: draft[key], ...attrs });
     input.addEventListener('input', () => {
       draft[key] = input.value;
       saveDraft();
+      if (['address', 'city', 'phone', 'customerName'].includes(key)) validate();
     });
     return h('label', {}, label, input);
   };
@@ -203,6 +226,7 @@ function orderForm() {
     }
     render();
   };
+  validate(); // si había un borrador, se revisa al abrir
   return h(
     'div',
     { class: 'card' },
@@ -211,6 +235,7 @@ function orderForm() {
     field('phone', 'WhatsApp del cliente', { inputmode: 'tel', placeholder: '300 123 4567', autocomplete: 'off' }),
     h('div', { class: 'row' }, field('city', 'Ciudad', { autocomplete: 'off' }), h('label', {}, 'Pago', payment)),
     field('address', 'Dirección completa', { placeholder: 'Calle, número, barrio, apto', autocomplete: 'off' }),
+    validationBox,
     field('notes', 'Indicaciones (opcional)', { autocomplete: 'off' }),
     field('product', 'Producto', { autocomplete: 'off' }),
     h('div', { class: 'row' }, field('qty', 'Cantidad', { type: 'number', min: '1' }), field('price', 'Precio unitario', { type: 'number', min: '0', placeholder: '0' })),

@@ -1,6 +1,7 @@
 // Hermes · motor del bot. Lleva cada pedido desde la confirmación hasta la entrega o la devolución.
 // Toda la conversación pasa por aquí: lo que envía el bot, lo que responde el cliente y cuándo debe intervenir una persona.
 import { db } from '../db/db.ts';
+import { checkAddress } from './address.ts';
 
 export const FINAL_STATUSES = ['entregado', 'devuelto', 'cancelado'];
 export const INCIDENT_LABEL: Record<string, string> = {
@@ -32,6 +33,7 @@ export interface Order {
   reminders_sent: number;
   last_outbound_at: Date | null;
   created_at: Date;
+  address_check?: { missing?: string[] } | null;
 }
 
 interface Outgoing {
@@ -43,6 +45,11 @@ interface Outgoing {
 const money = (n: number) => `$${n.toLocaleString('es-CO')}`;
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? '';
 const itemsText = (o: Order) => o.items.map((i) => `${i.qty} × ${i.name}`).join(', ');
+/** Si al validador le falta algo de la dirección, el bot se lo pide al cliente en el mismo mensaje. */
+const missingLine = (o: Order) => {
+  const m = o.address_check?.missing ?? [];
+  return m.length ? `\nPara que llegue sin problemas nos falta ${m.join(' y ')}. Pulsa «Corregir datos» y envíanos la dirección completa.` : '';
+};
 const payLine = (o: Order) => (o.payment === 'pagado' ? 'Tu pedido ya está pago.' : `Total a pagar al recibir: ${money(o.total)}.`);
 
 // Textos de los mensajes. Para envío real por WhatsApp, cada uno debe existir como plantilla aprobada por Meta
@@ -55,7 +62,7 @@ const CONFIRM_BUTTONS = [
 export const MESSAGES = {
   confirmacion: (o: Order, company: string): Outgoing => ({
     template: 'hermes_confirmacion',
-    body: `Hola ${firstName(o.customer_name)}, recibimos tu pedido ${o.code} en ${company}: ${itemsText(o)}. ${payLine(o)}\nLo enviaremos a: ${o.address}, ${o.city}${o.notes ? ` (${o.notes})` : ''}.\n¿Confirmas tu pedido?`,
+    body: `Hola ${firstName(o.customer_name)}, recibimos tu pedido ${o.code} en ${company}: ${itemsText(o)}. ${payLine(o)}\nLo enviaremos a: ${o.address}, ${o.city}${o.notes ? ` (${o.notes})` : ''}.${missingLine(o)}\n¿Confirmas tu pedido?`,
     buttons: CONFIRM_BUTTONS,
   }),
   recordatorio: (o: Order): Outgoing => ({
@@ -65,7 +72,7 @@ export const MESSAGES = {
   }),
   datos_actualizados: (o: Order): Outgoing => ({
     template: 'hermes_datos_actualizados',
-    body: `Actualizamos la dirección de tu pedido ${o.code}: ${o.address}, ${o.city}. ${payLine(o)} ¿Confirmas?`,
+    body: `Actualizamos la dirección de tu pedido ${o.code}: ${o.address}, ${o.city}. ${payLine(o)}${missingLine(o)} ¿Confirmas?`,
     buttons: CONFIRM_BUTTONS,
   }),
   pedir_direccion: (): Outgoing => ({ template: 'hermes_pedir_direccion', body: 'Claro. Escríbenos la dirección completa (calle, número, barrio, apartamento o indicaciones) y la ciudad, en un solo mensaje.' }),
@@ -250,6 +257,9 @@ export async function handleInbound(companyId: string, rawPhone: string, input: 
     } else await toHuman(o, 'El cliente respondió algo que el bot no entiende');
   } else if (o.awaiting === 'direccion' && typed) {
     await logEvent(o, 'direccion_corregida', `Antes: ${o.address}, ${o.city}`, 'Cliente');
+    const check = checkAddress(typed, o.city);
+    await db.query(`UPDATE hermes_orders SET address_check = $2::jsonb WHERE id = $1`, [o.id, JSON.stringify(check)]);
+    o.address_check = check;
     await patch(o, { address: typed, awaiting: 'confirmacion' });
     await send(o, MESSAGES.datos_actualizados(o));
   } else if (o.awaiting === 'novedad') {
@@ -271,6 +281,7 @@ export async function handleInbound(companyId: string, rawPhone: string, input: 
   } else if (o.awaiting === 'direccion_novedad' && typed) {
     const incident = await openIncident(o);
     await logEvent(o, 'direccion_corregida', `Antes: ${o.address}, ${o.city}`, 'Cliente');
+    await db.query(`UPDATE hermes_orders SET address_check = $2::jsonb WHERE id = $1`, [o.id, JSON.stringify(checkAddress(typed, o.city))]);
     await patch(o, { address: typed, awaiting: null });
     if (incident) await db.query(`UPDATE hermes_incidents SET customer_choice = 'corrige_direccion', status = 'por_gestionar' WHERE id = $1`, [incident.id]);
     await setAttention(o, 'El cliente corrigió la dirección: avisar a la transportadora');

@@ -7,6 +7,21 @@ import { db } from '../db/db.ts';
 import { auditBy, badRequest, forbidden, guard, notFound, parse } from '../core/http.ts';
 import type { Ctx } from '../core/http.ts';
 import * as bot from './bot.ts';
+import { checkAddress, checkContact, summarizeHistory } from './address.ts';
+
+/** Historial de pedidos de un teléfono en la empresa: sirve para estimar el riesgo de devolución. */
+async function customerHistory(companyId: string, phone: string) {
+  const { rows } = await db.query(
+    `SELECT (count(*) FILTER (WHERE o.status = 'entregado'))::int AS delivered,
+            (count(*) FILTER (WHERE o.status = 'devuelto'))::int AS returned,
+            (count(*) FILTER (WHERE o.status = 'cancelado'))::int AS cancelled,
+            (count(*) FILTER (WHERE o.status NOT IN ('entregado', 'devuelto', 'cancelado')))::int AS open,
+            (count(*) FILTER (WHERE o.status <> 'devuelto' AND EXISTS (SELECT 1 FROM hermes_incidents i WHERE i.order_id = o.id AND i.type = 'rehusado')))::int AS refused
+       FROM hermes_orders o WHERE o.company_id = $1 AND o.phone = $2`,
+    [companyId, phone],
+  );
+  return summarizeHistory(rows[0]);
+}
 
 const idParam = z.object({ id: z.uuid() });
 const STATUSES = ['por_confirmar', 'confirmado', 'despachado', 'en_reparto', 'novedad', 'entregado', 'devuelto', 'cancelado'] as const;
@@ -28,6 +43,7 @@ const orderBody = z.object({
 const ORDER_COLUMNS = `o.id, o.code, o.customer_name AS "customerName", o.phone, o.address, o.city, o.department, o.notes, o.items, o.total, o.payment,
   o.status, o.awaiting, o.attention, o.attention_reason AS "attentionReason", o.seller_user_id AS "sellerUserId", u.name AS "sellerName",
   o.source, o.external_ref AS "externalRef", o.carrier, o.tracking_number AS "trackingNumber", o.tracking_url AS "trackingUrl",
+  o.address_check AS "addressCheck", o.customer_risk AS "customerRisk",
   o.reminders_sent AS "remindersSent", o.created_at AS "createdAt", o.confirmed_at AS "confirmedAt", o.dispatched_at AS "dispatchedAt",
   o.out_for_delivery_at AS "outForDeliveryAt", o.delivered_at AS "deliveredAt", o.returned_at AS "returnedAt", o.cancelled_at AS "cancelledAt", o.cancel_reason AS "cancelReason"`;
 
@@ -78,11 +94,27 @@ export function hermesRoutes(app: FastifyInstance): void {
     return { orders: rows, counts: counts.rows };
   });
 
+  /**
+   * Validación previa de los datos de entrega. Los formularios la llaman mientras se escribe.
+   * Revisa estructura de la dirección, ciudad, teléfono, nombre e historial del cliente.
+   */
+  app.post('/api/hermes/validate', guard(), async (req) => {
+    const b = parse(z.object({ address: z.string().max(300).default(''), city: z.string().max(80).default(''), phone: z.string().max(25).default(''), customerName: z.string().max(120).default('') }), req.body);
+    const phone = bot.normalizePhone(b.phone);
+    const address = b.address.trim() ? checkAddress(b.address, b.city) : null;
+    // Solo se opina de lo que ya se escribió.
+    const contact = checkContact(phone, b.customerName).filter((i) => (i.code.startsWith('telefono') ? Boolean(b.phone.trim()) : Boolean(b.customerName.trim())));
+    const history = phone.length >= 10 ? await customerHistory(req.ctx.companyId, phone) : null;
+    return { address, contact, history };
+  });
+
   app.post('/api/hermes/orders', guard(), async (req) => {
     const ctx = req.ctx;
     const b = parse(orderBody, req.body);
     const phone = bot.normalizePhone(b.phone);
     if (phone.length < 10) throw badRequest('El teléfono no parece válido. Escríbelo con indicativo o como celular de 10 dígitos.');
+    const addressCheck = checkAddress(b.address, b.city);
+    const history = await customerHistory(ctx.companyId, phone);
     const sellerId = ctx.role === 'seller' ? ctx.userId : (b.sellerUserId ?? null);
     if (sellerId && sellerId !== ctx.userId) {
       const ok = await db.query(`SELECT 1 FROM core_users WHERE id = $1 AND company_id = $2`, [sellerId, ctx.companyId]);
@@ -102,15 +134,20 @@ export function hermesRoutes(app: FastifyInstance): void {
     const duplicate = await db.query(`SELECT code FROM hermes_orders WHERE company_id = $1 AND phone = $2 AND status NOT IN ('entregado', 'devuelto', 'cancelado') LIMIT 1`, [ctx.companyId, phone]);
 
     const { rows } = await db.query(
-      `INSERT INTO hermes_orders (company_id, code, customer_name, phone, address, city, department, notes, items, total, payment, seller_user_id, external_ref, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $14) RETURNING *`,
-      [ctx.companyId, code, b.customerName, phone, b.address, b.city, b.department, b.notes, JSON.stringify(b.items), total, b.payment, sellerId, b.externalRef, ctx.userId],
+      `INSERT INTO hermes_orders (company_id, code, customer_name, phone, address, city, department, notes, items, total, payment, seller_user_id, external_ref, created_by, address_check, customer_risk)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $14, $15::jsonb, $16) RETURNING *`,
+      [
+        ctx.companyId, code, b.customerName, phone, b.address, addressCheck.city?.name ?? b.city, b.department || addressCheck.city?.department || '', b.notes,
+        JSON.stringify(b.items), total, b.payment, sellerId, b.externalRef, ctx.userId, JSON.stringify(addressCheck), history.risk,
+      ],
     );
     const order: bot.Order = rows[0];
     await bot.logEvent(order, 'creado', `Pedido creado por ${ctx.name}`, ctx.name);
     if (duplicate.rows.length) await bot.setAttention(order, `Posible duplicado: este teléfono ya tiene abierto el pedido ${duplicate.rows[0].code}`);
+    else if (history.risk === 'alto') await bot.setAttention(order, `Cliente de riesgo: ${history.message}`);
+    if (addressCheck.level !== 'completa') await bot.logEvent(order, 'direccion_por_revisar', addressCheck.issues.map((i) => i.message).join(' '));
     await bot.startConfirmation(order);
-    return { id: order.id, code, possibleDuplicateOf: duplicate.rows[0]?.code ?? null };
+    return { id: order.id, code, possibleDuplicateOf: duplicate.rows[0]?.code ?? null, addressLevel: addressCheck.level, customerRisk: history.risk };
   });
 
   app.get('/api/hermes/orders/:id', guard(), async (req) => {

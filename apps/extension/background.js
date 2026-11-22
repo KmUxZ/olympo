@@ -349,6 +349,10 @@ const actions = {
     const res = await api('POST', '/api/hermes/orders', order);
     return { code: res.code, possibleDuplicateOf: res.possibleDuplicateOf ?? null };
   },
+  /** Revisa los datos de entrega (dirección, ciudad, teléfono e historial del cliente) antes de crear el pedido. */
+  async validateOrder({ data }) {
+    return api('POST', '/api/hermes/validate', data);
+  },
   async syncNow() {
     await markPresence();
     await sync(false);

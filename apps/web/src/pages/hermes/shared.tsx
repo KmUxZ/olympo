@@ -99,6 +99,10 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
           </ol>
         )}
 
+        {(o.addressCheck?.level !== 'completa' || o.customerRisk === 'alto' || o.customerRisk === 'medio') && !is('entregado', 'cancelado') && (
+          <ValidationBox compact value={{ address: o.addressCheck ?? null, history: o.customerRisk && o.customerRisk !== 'nuevo' ? { risk: o.customerRisk, message: '' } : null }} />
+        )}
+
         {o.attention && (
           <div className="alert danger row" role="status">
             <span className="grow"><strong>Necesita a una persona.</strong> {o.attentionReason}</span>
@@ -221,5 +225,43 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
         </div>
       </div>
     </Modal>
+  );
+}
+
+export interface Validation {
+  address: { level: 'completa' | 'revisar' | 'incompleta'; issues: { code: string; message: string; severity: string }[]; normalizedAddress: string; city: { name: string; department: string } | null } | null;
+  contact?: { code: string; message: string; severity: string }[];
+  history?: { risk: 'alto' | 'medio' | 'bueno' | 'nuevo'; message: string } | null;
+}
+const LEVEL: Record<string, { label: string; tone: string }> = {
+  completa: { label: 'Dirección completa', tone: 'ok' },
+  revisar: { label: 'Dirección por revisar', tone: 'warn' },
+  incompleta: { label: 'Dirección incompleta', tone: 'danger' },
+};
+const RISK_TONE: Record<string, string> = { alto: 'danger', medio: 'warn', bueno: 'ok', nuevo: 'plain' };
+const RISK_LABEL: Record<string, string> = { alto: 'Riesgo alto de devolución', medio: 'Historial mixto', bueno: 'Cliente cumplido', nuevo: 'Cliente nuevo' };
+
+/** Resultado del validador de datos de entrega: qué falta en la dirección y cómo le ha ido a este cliente antes. */
+export function ValidationBox({ value, compact }: { value: Validation | null; compact?: boolean }) {
+  if (!value || (!value.address && !value.contact?.length && !value.history)) return null;
+  const issues = [...(value.contact ?? []), ...(value.address?.issues ?? [])];
+  return (
+    <div className="check-box" role="status">
+      <div className="actions">
+        {value.address && <Badge tone={LEVEL[value.address.level].tone}>{LEVEL[value.address.level].label}</Badge>}
+        {value.address?.city && <span className="xs muted">{value.address.city.name}, {value.address.city.department}</span>}
+        {value.history && <Badge tone={RISK_TONE[value.history.risk]}>{RISK_LABEL[value.history.risk]}</Badge>}
+      </div>
+      {issues.length > 0 && (
+        <ul>
+          {issues.map((i) => <li key={i.code} className={i.severity === 'error' ? 'is-error' : ''}>{i.message}</li>)}
+        </ul>
+      )}
+      {value.history && value.history.risk !== 'nuevo' && <p className="small">{value.history.message}</p>}
+      {!compact && value.address && value.address.level === 'completa' && value.address.normalizedAddress && (
+        <p className="xs muted">Se entiende como: {value.address.normalizedAddress}</p>
+      )}
+      {!compact && <p className="xs muted">Revisa la forma de la dirección, no si existe en el mapa ni la cobertura de la transportadora.</p>}
+    </div>
   );
 }

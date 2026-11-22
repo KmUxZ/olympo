@@ -410,3 +410,9 @@ a.switcher-item:hover { background: var(--color-surface-alt); }
 .switcher-name strong { font-family: var(--font-display); letter-spacing: 0.03em; text-transform: uppercase; font-size: var(--text-sm); }
 .switcher-name span { font-size: var(--text-xs); color: var(--color-text-muted); }
 .switcher-item .badge { font-size: 0.625rem; }
+
+/* Resultado del validador de datos de entrega */
+.check-box { display: grid; gap: 6px; padding: var(--space-3); border-radius: var(--radius-sm); background: var(--color-surface-alt); border: 1px solid var(--color-border); font-size: var(--text-sm); }
+.check-box ul { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+.check-box li.is-error { color: var(--color-danger); font-weight: 600; }
+.check-box p { margin: 0; }

@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../auth';
 import { api, useApi } from '../../lib/api';
 import { fmtDateTime } from '../../lib/format';
 import { Badge, Empty, ErrorNote, Field, FormModal, Freshness, Loading, PageHero } from '../../components/ui';
-import { money, OrderDetailModal, ORDER_STATUS } from './shared';
+import { money, OrderDetailModal, ORDER_STATUS, ValidationBox } from './shared';
+import type { Validation } from './shared';
 
-interface Order { id: string; code: string; customerName: string; phone: string; city: string; items: { name: string; qty: number }[]; total: number; payment: string; status: string; attention: boolean; attentionReason: string; sellerName: string | null; carrier: string; trackingNumber: string; createdAt: string }
+interface Order { id: string; code: string; customerName: string; phone: string; city: string; items: { name: string; qty: number }[]; total: number; payment: string; status: string; attention: boolean; attentionReason: string; addressCheck: { level: string } | null; customerRisk: string; sellerName: string | null; carrier: string; trackingNumber: string; createdAt: string }
 
 const TABS: [string, string][] = [['', 'Todos'], ['atencion', 'Por atender'], ['por_confirmar', 'Por confirmar'], ['confirmado', 'Por despachar'], ['despachado', 'Despachados'], ['en_reparto', 'En reparto'], ['novedad', 'Con novedad'], ['entregado', 'Entregados'], ['devuelto', 'Devueltos'], ['cancelado', 'Cancelados']];
 
@@ -65,7 +66,11 @@ export function HermesOrders() {
                 {list.data.orders.map((o) => (
                   <tr key={o.id}>
                     <td className="nowrap"><strong>{o.code}</strong><span className="sub">{fmtDateTime(o.createdAt)}</span></td>
-                    <td>{o.customerName}<span className="sub">{o.phone} · {o.city}</span></td>
+                    <td>
+                      {o.customerName}<span className="sub">{o.phone} · {o.city}</span>
+                      {o.addressCheck && o.addressCheck.level !== 'completa' && <span className="sub" style={{ color: 'var(--color-warn)' }}>Dirección {o.addressCheck.level === 'incompleta' ? 'incompleta' : 'por revisar'}</span>}
+                      {o.customerRisk === 'alto' && <span className="sub" style={{ color: 'var(--color-danger)' }}>Riesgo alto de devolución</span>}
+                    </td>
                     <td style={{ maxWidth: 240 }}>{o.items.map((i) => `${i.qty} × ${i.name}`).join(', ')}</td>
                     <td className="nowrap">{money(o.total)}{o.payment === 'pagado' && <span className="sub">Ya pagado</span>}</td>
                     <td>
@@ -111,6 +116,16 @@ function CreateOrderModal({ canAssign, onClose, onSaved }: { canAssign: boolean;
   const valid = items.filter((i) => i.name.trim());
   const total = valid.reduce((n, i) => n + (Number(i.qty) || 0) * (Number(i.price) || 0), 0);
 
+  // Validación en vivo de los datos de entrega, un momento después de dejar de escribir.
+  const [validation, setValidation] = useState<Validation | null>(null);
+  useEffect(() => {
+    if (!f.address.trim() && !f.phone.trim()) return setValidation(null);
+    const id = setTimeout(() => {
+      api('POST', '/api/hermes/validate', { address: f.address, city: f.city, phone: f.phone, customerName: f.customerName }).then(setValidation).catch(() => {});
+    }, 450);
+    return () => clearTimeout(id);
+  }, [f.address, f.city, f.phone, f.customerName]);
+
   async function save() {
     if (!valid.length) throw new Error('Añade al menos un producto.');
     const res = await api('POST', '/api/hermes/orders', {
@@ -131,6 +146,7 @@ function CreateOrderModal({ canAssign, onClose, onSaved }: { canAssign: boolean;
         <div className="grow" style={{ flex: 2 }}><Field label="Dirección completa" hint="Calle, número, barrio, apartamento."><input required minLength={5} value={f.address} onChange={set('address')} /></Field></div>
         <div className="grow"><Field label="Ciudad"><input required minLength={2} value={f.city} onChange={set('city')} /></Field></div>
       </div>
+      <ValidationBox value={validation} />
       <Field label="Indicaciones para la entrega (opcional)"><input maxLength={300} value={f.notes} onChange={set('notes')} placeholder="Ej.: portería, dejar con el vecino, llamar antes" /></Field>
 
       <fieldset className="stack" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-3)' }}>
