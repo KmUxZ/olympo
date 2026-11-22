@@ -61,7 +61,8 @@ const NAV: Record<string, Group[]> = {
       group: 'Logística',
       items: [
         { label: 'Chats', icon: 'message', to: '/hermes/chats', roles: ['admin', 'supervisor'], badge: 'hermesAttention' },
-        { label: 'Pedidos', icon: 'box', to: '/hermes/pedidos' },
+        { label: 'Pedidos', icon: 'box', to: '/hermes/pedidos', roles: ['admin', 'supervisor'] },
+        { label: 'Mis pedidos', icon: 'box', to: '/hermes/pedidos', roles: ['seller'], badge: 'hermesAttention' },
         { label: 'Novedades de entrega', icon: 'alert', to: '/hermes/novedades', roles: ['admin', 'supervisor'] },
         { label: 'Panel de entregas', icon: 'chart', to: '/hermes/panel', roles: ['admin', 'supervisor'] },
         { label: 'Clientes bloqueados', icon: 'shield', to: '/hermes/bloqueados', roles: ['admin', 'supervisor'] },

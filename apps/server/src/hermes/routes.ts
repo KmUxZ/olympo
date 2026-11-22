@@ -47,7 +47,16 @@ const ORDER_COLUMNS = `o.id, o.code, o.customer_name AS "customerName", o.phone,
   o.address_check AS "addressCheck", o.customer_risk AS "customerRisk",
   o.bot_paused AS "botPaused", o.taken_by AS "takenBy", o.attention_at AS "attentionAt",
   o.reminders_sent AS "remindersSent", o.created_at AS "createdAt", o.confirmed_at AS "confirmedAt", o.dispatched_at AS "dispatchedAt",
-  o.out_for_delivery_at AS "outForDeliveryAt", o.delivered_at AS "deliveredAt", o.returned_at AS "returnedAt", o.cancelled_at AS "cancelledAt", o.cancel_reason AS "cancelReason"`;
+  o.out_for_delivery_at AS "outForDeliveryAt", o.delivered_at AS "deliveredAt", o.returned_at AS "returnedAt", o.cancelled_at AS "cancelledAt", o.cancel_reason AS "cancelReason",
+  o.correction_note AS "correctionNote", o.correction_requested_at AS "correctionRequestedAt", o.correction_by AS "correctionBy", o.corrected_at AS "correctedAt"`;
+
+/**
+ * Lo que ve una vendedora de sus pedidos: los datos que ella misma subió y si le pidieron corregir algo.
+ * Sin estado logístico, guía, entregas, devoluciones, conversación ni historial del cliente.
+ */
+const SELLER_COLUMNS = `o.id, o.code, o.customer_name AS "customerName", o.phone, o.address, o.city, o.notes, o.items, o.total, o.payment,
+  o.created_at AS "createdAt", (o.correction_requested_at IS NOT NULL) AS "needsCorrection", o.correction_note AS "correctionNote",
+  o.correction_requested_at AS "correctionRequestedAt", o.corrected_at AS "correctedAt"`;
 
 /** Filtro de alcance: una vendedora solo ve sus pedidos. */
 function sellerScope(ctx: Ctx, params: unknown[]): string {
@@ -196,6 +205,21 @@ export function hermesRoutes(app: FastifyInstance): void {
       z.object({ status: z.enum(STATUSES).optional(), attention: z.enum(['1']).optional(), q: z.string().trim().max(80).optional(), limit: z.coerce.number().int().min(1).max(300).default(150) }),
       req.query,
     );
+    if (req.ctx.role === 'seller') {
+      const p: unknown[] = [req.ctx.companyId, req.ctx.userId];
+      let w = '';
+      if (q.attention) w += ' AND o.correction_requested_at IS NOT NULL';
+      if (q.q) {
+        p.push(`%${q.q.toLowerCase()}%`);
+        w += ` AND (lower(o.customer_name) LIKE $3 OR o.phone LIKE $3 OR lower(o.code) LIKE $3)`;
+      }
+      p.push(q.limit);
+      const [list, totals] = await Promise.all([
+        db.query(`SELECT ${SELLER_COLUMNS} FROM hermes_orders o WHERE o.company_id = $1 AND o.seller_user_id = $2 ${w} ORDER BY (o.correction_requested_at IS NOT NULL) DESC, o.created_at DESC LIMIT $${p.length}`, p),
+        db.query(`SELECT count(*)::int AS total, (count(*) FILTER (WHERE correction_requested_at IS NOT NULL))::int AS "toFix" FROM hermes_orders WHERE company_id = $1 AND seller_user_id = $2`, [req.ctx.companyId, req.ctx.userId]),
+      ]);
+      return { orders: list.rows, mine: totals.rows[0] };
+    }
     const params: unknown[] = [req.ctx.companyId];
     let where = sellerScope(req.ctx, params);
     if (q.status) {
@@ -232,7 +256,8 @@ export function hermesRoutes(app: FastifyInstance): void {
     const address = b.address.trim() ? checkAddress(composeAddress(b.address, b.neighborhood), b.city) : null;
     // Solo se opina de lo que ya se escribió.
     const contact = checkContact(phone, b.customerName).filter((i) => (i.code.startsWith('telefono') ? Boolean(b.phone.trim()) : Boolean(b.customerName.trim())));
-    const history = phone.length >= 10 ? await customerHistory(req.ctx.companyId, phone) : null;
+    // El historial de entregas y devoluciones del cliente es información de la empresa: la vendedora no lo ve.
+    const history = phone.length >= 10 && req.ctx.role !== 'seller' ? await customerHistory(req.ctx.companyId, phone) : null;
     const blocked = phone.length >= 10 ? await blockedInfo(req.ctx.companyId, phone) : null;
     return { address, contact, history, blocked };
   });
@@ -241,12 +266,17 @@ export function hermesRoutes(app: FastifyInstance): void {
     const b = parse(orderBody, req.body);
     const pre = await inspectOrder(req.ctx, b);
     if (pre.errors.length) throw new HttpError(pre.errorCode === 'cliente_bloqueado' ? 409 : 400, pre.errorCode, pre.errors.join(' '));
-    return createOrder(req.ctx, b, pre, 'manual');
+    const res = await createOrder(req.ctx, b, pre, 'manual');
+    return req.ctx.role === 'seller' ? { id: res.id, code: res.code } : res;
   });
 
   app.get('/api/hermes/orders/:id', guard(), async (req) => {
     const { id } = parse(idParam, req.params);
     await loadOrder(req.ctx, id);
+    if (req.ctx.role === 'seller') {
+      const { rows } = await db.query(`SELECT ${SELLER_COLUMNS} FROM hermes_orders o WHERE o.id = $1`, [id]);
+      return { order: rows[0] };
+    }
     const [order, events, messages, incidents, settings] = await Promise.all([
       db.query(`SELECT ${ORDER_COLUMNS} FROM hermes_orders o LEFT JOIN core_users u ON u.id = o.seller_user_id WHERE o.id = $1`, [id]),
       db.query(`SELECT id, at, type, detail, actor FROM hermes_events WHERE order_id = $1 ORDER BY at`, [id]),
@@ -295,6 +325,72 @@ export function hermesRoutes(app: FastifyInstance): void {
         await bot.logEvent(o, 'atendido', 'Marcado como atendido', ctx.name);
         break;
     }
+    return { ok: true };
+  });
+
+  /** Logística le pide a la vendedora que corrija un dato del pedido. */
+  app.post('/api/hermes/orders/:id/request-correction', guard('admin', 'supervisor'), async (req) => {
+    const { id } = parse(idParam, req.params);
+    const b = parse(z.object({ note: z.string().trim().min(3).max(300) }), req.body);
+    const o = await loadOrder(req.ctx, id);
+    if (['entregado', 'devuelto', 'cancelado'].includes(o.status)) throw badRequest('El pedido ya está cerrado.', 'estado_no_valido');
+    if (!(o as unknown as { seller_user_id: string | null }).seller_user_id) throw badRequest('El pedido no tiene vendedora asignada: no hay a quién pedirle la corrección.', 'sin_vendedora');
+    await db.query(`UPDATE hermes_orders SET correction_note = $2, correction_requested_at = now(), correction_by = $3, corrected_at = NULL, updated_at = now() WHERE id = $1`, [id, b.note, req.ctx.name]);
+    await bot.logEvent(o, 'correccion_pedida', b.note, req.ctx.name);
+    return { ok: true };
+  });
+
+  /** Retira una corrección pedida (ya no hace falta). */
+  app.post('/api/hermes/orders/:id/cancel-correction', guard('admin', 'supervisor'), async (req) => {
+    const { id } = parse(idParam, req.params);
+    const o = await loadOrder(req.ctx, id);
+    await db.query(`UPDATE hermes_orders SET correction_note = '', correction_requested_at = NULL, correction_by = '', updated_at = now() WHERE id = $1`, [id]);
+    await bot.logEvent(o, 'correccion_retirada', '', req.ctx.name);
+    return { ok: true };
+  });
+
+  /** La vendedora corrige los datos de un pedido suyo cuando se lo pidieron. Pasa por el mismo validador que al crearlo. */
+  app.put('/api/hermes/orders/:id/correction', guard(), async (req) => {
+    const ctx = req.ctx;
+    const { id } = parse(idParam, req.params);
+    const b = parse(
+      z.object({ customerName: z.string().trim().min(2).max(120), phone: z.string().trim().min(7).max(25), address: z.string().trim().min(5).max(300), city: z.string().trim().min(2).max(80), notes: z.string().trim().max(300).default('') }),
+      req.body,
+    );
+    const o = await loadOrder(ctx, id);
+    const pending = (await db.query(`SELECT correction_requested_at FROM hermes_orders WHERE id = $1`, [id])).rows[0]?.correction_requested_at;
+    if (!pending) throw badRequest('Este pedido no tiene una corrección pendiente.', 'sin_correccion');
+    if (['entregado', 'devuelto', 'cancelado'].includes(o.status)) throw badRequest('El pedido ya está cerrado.', 'estado_no_valido');
+
+    const phone = bot.normalizePhone(b.phone);
+    if (phone.length < 10) throw badRequest('El teléfono no parece válido. Escríbelo con indicativo o como celular de 10 dígitos.', 'telefono_invalido');
+    const check = checkAddress(composeAddress(b.address, ''), b.city);
+    const addressErrors = check.issues.filter((i) => i.severity === 'error');
+    if (addressErrors.length) throw badRequest(`La dirección está incompleta. ${addressErrors.map((i) => i.message).join(' ')}`, 'direccion_incompleta');
+    if (phone !== o.phone) {
+      const blocked = await blockedInfo(ctx.companyId, phone);
+      if (blocked) throw new HttpError(409, 'cliente_bloqueado', `Este cliente está bloqueado: ${blocked.reason}`);
+    }
+
+    const newAddress = composeAddress(b.address, '');
+    const newCity = check.city?.name ?? b.city;
+    const changes: string[] = [];
+    if (b.customerName !== o.customer_name) changes.push('nombre');
+    if (phone !== o.phone) changes.push('teléfono');
+    if (newAddress !== o.address || newCity !== o.city) changes.push('dirección');
+    if (b.notes !== o.notes) changes.push('indicaciones');
+    await db.query(
+      `UPDATE hermes_orders SET customer_name = $2, phone = $3, address = $4, city = $5, notes = $6, address_check = $7::jsonb,
+              correction_requested_at = NULL, corrected_at = now(), updated_at = now() WHERE id = $1`,
+      [id, b.customerName, phone, newAddress, newCity, b.notes, JSON.stringify(check)],
+    );
+    if (check.city?.department) await db.query(`UPDATE hermes_orders SET department = $2 WHERE id = $1`, [id, check.city.department]);
+    const fresh = (await bot.getOrder(ctx.companyId, id))!;
+    await bot.logEvent(fresh, 'corregido', changes.length ? `Cambió: ${changes.join(', ')}` : 'Revisó los datos sin cambios', ctx.name);
+    // La pelota vuelve a logística: que revise la corrección antes de seguir.
+    await bot.setAttention(fresh, `${ctx.name} corrigió los datos del pedido: revisar`);
+    // Si el cliente aún no había confirmado, se le vuelve a pedir con los datos corregidos.
+    if (fresh.status === 'por_confirmar' && changes.length) await bot.startConfirmation(fresh);
     return { ok: true };
   });
 

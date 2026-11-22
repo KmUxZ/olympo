@@ -6,12 +6,19 @@ import { Badge, Empty, ErrorNote, Field, FormModal, Freshness, Loading, PageHero
 import { itemsLabel, money, OrderDetailModal, ORDER_STATUS, ValidationBox } from './shared';
 import type { Validation } from './shared';
 import { ImportModal } from './Import';
+import { MyOrders } from './MyOrders';
 
 interface Order { id: string; code: string; customerName: string; phone: string; city: string; items: { name: string; qty: number; free?: boolean }[]; total: number; payment: string; status: string; attention: boolean; attentionReason: string; addressCheck: { level: string } | null; customerRisk: string; sellerName: string | null; carrier: string; trackingNumber: string; createdAt: string }
 
 const TABS: [string, string][] = [['', 'Todos'], ['atencion', 'Por atender'], ['por_confirmar', 'Por confirmar'], ['confirmado', 'Por despachar'], ['despachado', 'Despachados'], ['en_reparto', 'En reparto'], ['novedad', 'Con novedad'], ['entregado', 'Entregados'], ['devuelto', 'Devueltos'], ['cancelado', 'Cancelados']];
 
+/** La vendedora tiene su propia pantalla: solo lo que subió y lo que debe corregir. */
 export function HermesOrders() {
+  const { me } = useAuth();
+  return me!.user.role === 'seller' ? <MyOrders /> : <ManageOrders />;
+}
+
+function ManageOrders() {
   const { me } = useAuth();
   const [tab, setTab] = useState('');
   const [search, setSearch] = useState('');
@@ -111,7 +118,7 @@ export function HermesOrders() {
   );
 }
 
-function CreateOrderModal({ canAssign, onClose, onSaved }: { canAssign: boolean; onClose: () => void; onSaved: (r: { id: string; code: string; possibleDuplicateOf: string | null }) => Promise<void> }) {
+export function CreateOrderModal({ canAssign, onClose, onSaved }: { canAssign: boolean; onClose: () => void; onSaved: (r: { id: string; code: string; possibleDuplicateOf?: string | null }) => Promise<void> }) {
   const users = useApi<{ users: { id: string; name: string; role: string; status: string }[] }>(canAssign ? '/api/users' : null);
   const [f, setF] = useState({ customerName: '', phone: '', address: '', neighborhood: '', city: '', notes: '', payment: 'contraentrega', sellerUserId: '', externalRef: '' });
   const [items, setItems] = useState([{ name: '', qty: '1', price: '' }]);

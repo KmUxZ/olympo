@@ -37,6 +37,7 @@ export const EVENT_LABEL: Record<string, string> = {
   creado: 'Pedido creado', confirmacion_enviada: 'Confirmación enviada', recordatorio: 'Recordatorio', confirmado: 'Confirmado', cancelado: 'Cancelado',
   despachado: 'Despachado', en_reparto: 'En reparto', novedad: 'Novedad', novedad_gestionada: 'Novedad gestionada', entregado: 'Entregado', devuelto: 'Devuelto',
   atencion: 'Requiere atención', atendido: 'Atendido', direccion_corregida: 'Dirección corregida',
+  correccion_pedida: 'Corrección pedida a la vendedora', correccion_retirada: 'Corrección retirada', corregido: 'Datos corregidos por la vendedora',
 };
 
 export interface Message { id: string; direction: 'in' | 'out'; kind: string; template: string; body: string; buttons: { label: string; payload: string }[]; status: string; sender: string; createdAt: string }
@@ -50,6 +51,8 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
   const [form, setForm] = useState({ carrier: '', trackingNumber: '', trackingUrl: '', type: 'ausente', description: '', reason: '' });
   const [text, setText] = useState('');
   const [simText, setSimText] = useState('');
+  const [asking, setAsking] = useState(false);
+  const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -113,6 +116,22 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
           </div>
         )}
 
+        {o.correctionRequestedAt && (
+          <div className="alert warn row" role="status">
+            <span className="grow"><strong>Corrección pedida a {o.sellerName ?? 'la vendedora'}.</strong> {o.correctionNote}</span>
+            {canManage && <button className="btn sm" disabled={busy} onClick={() => void run(() => api('POST', `/api/hermes/orders/${orderId}/cancel-correction`))}>Retirar</button>}
+          </div>
+        )}
+        {canManage && asking && (
+          <form className="card card-pad stack" onSubmit={(e: FormEvent) => { e.preventDefault(); void run(() => api('POST', `/api/hermes/orders/${orderId}/request-correction`, { note: note.trim() })).then(() => { setAsking(false); setNote(''); }); }}>
+            <h3>Pedir corrección a {o.sellerName}</h3>
+            <Field label="Qué debe corregir" hint="Lo verá en «Mis pedidos». Ella no ve el estado del envío ni la conversación con el cliente.">
+              <input required minLength={3} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej.: el cliente dice que la dirección es otra; confírmala y corrígela" />
+            </Field>
+            <div className="actions"><button type="button" className="btn sm" onClick={() => setAsking(false)}>Volver</button><button className="btn primary sm" disabled={busy}>Pedir corrección</button></div>
+          </form>
+        )}
+
         <div className="grid cols-2">
           {/* Conversación */}
           <div className="card chat-card">
@@ -163,6 +182,7 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
                     {is('despachado', 'en_reparto', 'novedad') && <button className="btn sm" disabled={busy} onClick={() => void act({ action: 'entregado' })}>Entregado</button>}
                     {is('despachado', 'en_reparto', 'novedad') && <button className="btn sm" disabled={busy} onClick={() => window.confirm('¿Marcar el pedido como devuelto?') && void act({ action: 'devuelto' })}>Devuelto</button>}
                     {is('por_confirmar', 'confirmado', 'novedad') && <button className="btn sm danger" onClick={() => setPanel('cancelar')}>Cancelar pedido</button>}
+                    {o.sellerUserId && !o.correctionRequestedAt && !asking && <button className="btn sm" onClick={() => setAsking(true)}>Pedir corrección a la vendedora</button>}
                   </div>
                 )}
                 {panel === 'despachar' && (
