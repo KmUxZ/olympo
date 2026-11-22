@@ -1,8 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useApi } from '../lib/api';
-import { dayEndIso, dayStartIso, downloadCsv, fmtMinutes, fmtSeconds, isoDay } from '../lib/format';
-import { Empty, ErrorNote, Field, Loading, PageHero } from '../components/ui';
+import { connectedPct, pctTone, dayEndIso, dayStartIso, downloadCsv, fmtMinutes, fmtSeconds, isoDay } from '../lib/format';
+import { Badge, Empty, ErrorNote, Field, Loading, PageHero } from '../components/ui';
 import { Composition, StackedBars } from '../components/charts';
+
+/** % conectada: tiempo clasificado menos «sin datos». */
+const pctOf = (r: Pick<Totals, 'observedMinutes' | 'noActivityMinutes' | 'breakMinutes' | 'noDataMinutes'>) =>
+  connectedPct(r.observedMinutes + r.noActivityMinutes + r.breakMinutes + r.noDataMinutes, r.noDataMinutes);
 
 const parts = (r: Totals) => [
   { key: 'observada', value: r.observedMinutes },
@@ -45,12 +49,12 @@ export function Reports() {
     if (!data) return;
     if (tab === 'persona') {
       downloadCsv(`reporte-por-persona_${from}_${to}.csv`,
-        ['Persona', 'Equipo', 'Turnos', 'Horas en turno', 'Horas con actividad observada', 'Horas sin actividad observada', 'Horas en pausa', 'Horas sin datos', 'Novedades', 'Mensajes atendidos (Pancake)', 'Respuesta media en segundos (Pancake)'],
-        data.byUser.map((r) => [r.userName, r.teamName, r.shifts, hours(r.durationMinutes), hours(r.observedMinutes), hours(r.noActivityMinutes), hours(r.breakMinutes), hours(r.noDataMinutes), r.incidents, r.inbox, r.avgResponseSeconds]));
+        ['Persona', 'Equipo', 'Turnos', '% conectada', 'Horas en turno', 'Horas con actividad observada', 'Horas sin actividad observada', 'Horas en pausa', 'Horas sin datos', 'Novedades', 'Mensajes atendidos (Pancake)', 'Respuesta media en segundos (Pancake)'],
+        data.byUser.map((r) => [r.userName, r.teamName, r.shifts, pctOf(r), hours(r.durationMinutes), hours(r.observedMinutes), hours(r.noActivityMinutes), hours(r.breakMinutes), hours(r.noDataMinutes), r.incidents, r.inbox, r.avgResponseSeconds]));
     } else {
       downloadCsv(`reporte-por-dia_${from}_${to}.csv`,
-        ['Día', 'Turnos', 'Horas en turno', 'Horas con actividad observada', 'Horas sin actividad observada', 'Horas en pausa', 'Horas sin datos', 'Novedades'],
-        data.byDay.map((r) => [r.day, r.shifts, hours(r.durationMinutes), hours(r.observedMinutes), hours(r.noActivityMinutes), hours(r.breakMinutes), hours(r.noDataMinutes), r.incidents]));
+        ['Día', 'Turnos', '% conectada', 'Horas en turno', 'Horas con actividad observada', 'Horas sin actividad observada', 'Horas en pausa', 'Horas sin datos', 'Novedades'],
+        data.byDay.map((r) => [r.day, r.shifts, pctOf(r), hours(r.durationMinutes), hours(r.observedMinutes), hours(r.noActivityMinutes), hours(r.breakMinutes), hours(r.noDataMinutes), r.incidents]));
     }
   }
 
@@ -111,7 +115,7 @@ export function Reports() {
             <table>
               <thead>
                 <tr>
-                  <th>{tab === 'persona' ? 'Persona' : 'Día'}</th><th>Turnos</th><th>En turno</th><th>Reparto del tiempo</th><th>Con actividad observada</th><th>Sin actividad observada</th><th>En pausa</th><th>Sin datos</th><th>Novedades</th>
+                  <th>{tab === 'persona' ? 'Persona' : 'Día'}</th><th>Turnos</th><th>En turno</th><th title="Parte del tiempo en turno con señal de la extensión">Conectada</th><th>Reparto del tiempo</th><th>Con actividad observada</th><th>Sin actividad observada</th><th>En pausa</th><th>Sin datos</th><th>Novedades</th>
                   {tab === 'persona' && data.hasChannelData && <><th>Mensajes atendidos</th><th>Respuesta media</th></>}
                 </tr>
               </thead>
@@ -121,6 +125,7 @@ export function Reports() {
                     <td>{'userId' in r ? <><strong>{r.userName}</strong><span className="sub">{r.teamName ?? 'Sin equipo'}</span></> : <strong>{r.day}</strong>}</td>
                     <td>{r.shifts}</td>
                     <td>{fmtMinutes(r.durationMinutes)}</td>
+                    <td>{pctOf(r) === null ? '—' : <Badge tone={pctTone(pctOf(r)!)}>{pctOf(r)}%</Badge>}</td>
                     <td style={{ minWidth: 150, verticalAlign: 'middle' }}><Composition parts={parts(r)} /></td>
                     <td>{fmtMinutes(r.observedMinutes)}</td>
                     <td>{fmtMinutes(r.noActivityMinutes)}</td>
@@ -134,6 +139,7 @@ export function Reports() {
                   <td><strong>Total</strong></td>
                   <td><strong>{total(rows, 'shifts')}</strong></td>
                   <td><strong>{fmtMinutes(total(rows, 'durationMinutes'))}</strong></td>
+                  <td><strong>{pctOf({ observedMinutes: total(rows, 'observedMinutes'), noActivityMinutes: total(rows, 'noActivityMinutes'), breakMinutes: total(rows, 'breakMinutes'), noDataMinutes: total(rows, 'noDataMinutes') }) === null ? '—' : `${pctOf({ observedMinutes: total(rows, 'observedMinutes'), noActivityMinutes: total(rows, 'noActivityMinutes'), breakMinutes: total(rows, 'breakMinutes'), noDataMinutes: total(rows, 'noDataMinutes') })}%`}</strong></td>
                   <td></td>
                   <td><strong>{fmtMinutes(total(rows, 'observedMinutes'))}</strong></td>
                   <td><strong>{fmtMinutes(total(rows, 'noActivityMinutes'))}</strong></td>

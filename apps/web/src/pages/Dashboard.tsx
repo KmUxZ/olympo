@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useAuth } from '../auth';
 import { Link } from 'react-router-dom';
 import { useApi, useNow } from '../lib/api';
-import { ago, BREAK_LABEL, fmtLongDay, fmtSeconds, fmtMinutes, fmtTime, INCIDENT_LABEL, INCIDENT_STATUS, LIVE_STATE, scheduleText } from '../lib/format';
+import { connectedPct, pctTone, ago, BREAK_LABEL, fmtLongDay, fmtSeconds, fmtMinutes, fmtTime, INCIDENT_LABEL, INCIDENT_STATUS, LIVE_STATE, scheduleText } from '../lib/format';
 import { Badge, Empty, ErrorNote, Freshness, Loading, StatePill } from '../components/ui';
 import { ShiftDetailModal } from '../components/ShiftDetail';
-import { Donut, HourBars, TeamTimeline } from '../components/charts';
+import { Composition, Donut, HourBars, STATE_ORDER, TeamTimeline } from '../components/charts';
 
 const LIVE_KEYS = ['actividad_observada', 'sin_actividad_observada', 'en_pausa', 'sin_senal', 'fuera_de_turno'] as const;
 
@@ -32,6 +32,16 @@ export function Dashboard() {
   const now = localNow + (new Date(data.serverTime).getTime() - (updatedAt ?? localNow));
   const c = data.counts;
   const hasChannel = data.channel?.connectedLines > 0;
+  // Minutos de hoy por estado y persona, a partir de los tramos de la línea del día.
+  const todayParts = new Map<string, { key: string; value: number }[]>();
+  for (const t of data.timelines as { userId: string; segments: { start: string; end: string; state: string }[] }[]) {
+    const parts = todayParts.get(t.userId) ?? STATE_ORDER.map((key) => ({ key: key as string, value: 0 }));
+    for (const seg of t.segments) {
+      const p = parts.find((x) => x.key === seg.state);
+      if (p) p.value += (new Date(seg.end).getTime() - new Date(seg.start).getTime()) / 60000;
+    }
+    todayParts.set(t.userId, parts);
+  }
   const timelineRows = (data.sellers as Row[]).map((s) => {
     const mine = (data.timelines as { userId: string; shiftId: string; status: string; segments: { start: string; end: string; state: string }[] }[]).filter((t) => t.userId === s.user.id);
     return {
@@ -105,7 +115,7 @@ export function Dashboard() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Vendedora</th><th>Estado</th><th>Herramienta reciente</th><th>Último dato</th><th>Turno de hoy</th>{hasChannel && <th>Atención hoy · Pancake</th>}<th>Línea</th><th>Novedades</th><th></th></tr>
+                <tr><th>Vendedora</th><th>Estado</th><th>Herramienta reciente</th><th>Último dato</th><th>Turno de hoy</th><th title="Parte del turno de hoy con señal de la extensión">Conectada hoy</th>{hasChannel && <th>Atención hoy · Pancake</th>}<th>Línea</th><th>Novedades</th><th></th></tr>
               </thead>
               <tbody>
                 {data.sellers.map((s: Row) => (
@@ -137,6 +147,20 @@ export function Dashboard() {
                           <span className="sub">{fmtMinutes(s.observedMinutes)} con actividad · {fmtMinutes(s.breakMinutes)} en pausa</span>
                         </>
                       ) : '—'}
+                    </td>
+                    <td style={{ minWidth: 130 }}>
+                      {(() => {
+                        const parts = todayParts.get(s.user.id);
+                        const total = parts ? parts.reduce((n, p) => n + p.value, 0) : 0;
+                        const pct = parts ? connectedPct(total, parts.find((p) => p.key === 'sin_datos')?.value ?? 0) : null;
+                        if (pct === null || !parts) return '—';
+                        return (
+                          <>
+                            <Badge tone={pctTone(pct)}>{pct}% conectada</Badge>
+                            <div style={{ marginTop: 6 }}><Composition parts={parts} height={8} /></div>
+                          </>
+                        );
+                      })()}
                     </td>
                     {hasChannel && (
                       <td className="nowrap">

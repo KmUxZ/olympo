@@ -46,6 +46,16 @@ export function fmtMinutes(min: number | null | undefined): string {
   return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`;
 }
 
+/**
+ * Porcentaje del turno con la extensión conectada (con señal): todo menos los minutos «sin datos».
+ * No depende del teclado: una persona en pausa o sin teclear sigue contando como conectada.
+ */
+export function connectedPct(totalMinutes: number, noDataMinutes: number): number | null {
+  if (!totalMinutes || totalMinutes <= 0) return null;
+  return Math.max(0, Math.min(100, Math.round(((totalMinutes - noDataMinutes) / totalMinutes) * 100)));
+}
+export const pctTone = (pct: number) => (pct >= 90 ? 'ok' : pct >= 70 ? 'warn' : 'danger');
+
 export function fmtSeconds(sec: number | null | undefined): string {
   if (sec == null) return '—';
   if (sec < 60) return `${Math.round(sec)} s`;

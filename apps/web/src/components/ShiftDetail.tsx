@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../auth';
 import { api, useApi } from '../lib/api';
-import { BREAK_LABEL, INCIDENT_LABEL, download, END_REASON, fmtDateTime, fmtMinutes, fmtTime } from '../lib/format';
+import { BREAK_LABEL, connectedPct, INCIDENT_LABEL, download, END_REASON, fmtDateTime, fmtMinutes, fmtTime } from '../lib/format';
 import { Badge, ErrorNote, Loading, Modal } from './ui';
 import { TeamTimeline } from './charts';
 
@@ -14,6 +14,8 @@ export function ShiftSummaryView({ shiftId, refreshMs = 0, onChanged }: { shiftI
   if (loading && !data) return <Loading />;
   if (!data) return <ErrorNote error={error} />;
   const { shift, summary } = data;
+  const classified = summary.observedMinutes + summary.noActivityMinutes + summary.breakMinutes + summary.noDataMinutes;
+  const connected = connectedPct(classified, summary.noDataMinutes);
   const canClose = shift.status === 'active' && me && me.user.role !== 'seller' && shift.userId !== me.user.id;
 
   async function closeShift() {
@@ -52,6 +54,7 @@ export function ShiftSummaryView({ shiftId, refreshMs = 0, onChanged }: { shiftI
 
       <div className="stats">
         <div className="card stat"><b>{fmtMinutes(summary.durationMinutes)}</b><span>Duración</span></div>
+        <div className="card stat"><b>{connected === null ? '—' : `${connected}%`}</b><span>Del turno conectada</span></div>
         <div className="card stat"><b>{fmtMinutes(summary.observedMinutes)}</b><span>Con actividad observada</span></div>
         <div className="card stat"><b>{fmtMinutes(summary.noActivityMinutes)}</b><span>Sin actividad observada</span></div>
         <div className="card stat"><b>{fmtMinutes(summary.breakMinutes)}</b><span>En pausa</span></div>

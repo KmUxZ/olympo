@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { CONSENT_VERSION } from '../config.ts';
 import { db, inIds } from '../db/db.ts';
-import { assertCanSeeUser, auditBy, badRequest, forbidden, guard, HttpError, notFound, parse, visibleUserIds } from '../core/http.ts';
+import { assertCanSeeUser, audit, auditBy, badRequest, forbidden, guard, HttpError, notFound, parse, visibleUserIds } from '../core/http.ts';
 import type { Ctx } from '../core/http.ts';
 import { closeShift, computeSummary, floorMinute } from './summary.ts';
 import type { ShiftRow } from './summary.ts';
@@ -188,6 +188,23 @@ export function shiftRoutes(app: FastifyInstance): void {
     // Corrección del reloj del equipo: si difiere más de 90 s del servidor, se desplazan los minutos.
     const skew = now - new Date(body.sentAt).getTime();
     const shiftMs = Math.abs(skew) > 90_000 ? skew : 0;
+
+    // Si la extensión reaparece tras un hueco largo sin señal (equipo apagado, o el servidor estuvo caído y la
+    // tarea de cierre automático no pudo correr), el turno se da por terminado en el último dato recibido.
+    // No aplica si lo que llega son minutos guardados sin conexión que cubren ese hueco: eso sí fue trabajo.
+    if (shift.status === 'active') {
+      const lastSeen = (shift.last_sync_at ?? shift.started_at).getTime();
+      const gapMs = ctx.company.settings.autoCloseHours * 3600_000;
+      const earliest = body.minutes.length ? Math.min(...body.minutes.map((m) => new Date(m.minute).getTime() + shiftMs)) : Infinity;
+      if (now - lastSeen > gapMs && earliest > lastSeen + gapMs) {
+        await closeShift(db, shift, new Date(lastSeen), 'automatico', null);
+        await audit(db, {
+          companyId: ctx.companyId, actorName: 'Sistema', action: 'turno.cierre_automatico', entityType: 'turno', entityId: id,
+          summary: `Turno de ${ctx.name} cerrado automáticamente: reapareció tras más de ${ctx.company.settings.autoCloseHours} h sin señal`,
+        });
+        return { serverTime: new Date(), accepted: 0, shift: { id, status: 'ended' as const }, openBreak: null };
+      }
+    }
     const from = floorMinute(shift.started_at);
     const to = shift.ended_at ? shift.ended_at.getTime() : now + 60_000;
 
