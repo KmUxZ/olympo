@@ -344,6 +344,11 @@ const actions = {
   async incident({ incidentType, description }) {
     await api('POST', '/api/argos/incidents', { type: incidentType, description });
   },
+  /** Crea un pedido en Hermes (logística) a nombre de la persona que tiene la sesión. */
+  async createOrder({ order }) {
+    const res = await api('POST', '/api/hermes/orders', order);
+    return { code: res.code, possibleDuplicateOf: res.possibleDuplicateOf ?? null };
+  },
   async syncNow() {
     await markPresence();
     await sync(false);
@@ -369,7 +374,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const action = actions[message.type];
   if (!action) return;
   action(message)
-    .then(() => sendResponse({ ok: true }))
+    .then((result) => sendResponse({ ok: true, result }))
     .catch((err) => sendResponse({ ok: false, code: err.code ?? 'error', message: err.message ?? 'Ocurrió un error.' }));
   return true;
 });

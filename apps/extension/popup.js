@@ -6,7 +6,10 @@ const DAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 
 const app = document.getElementById('app');
 const logoutBtn = document.getElementById('logout');
-let ui = { busy: false, error: '', notice: '', panel: null }; // panel: 'pause' | 'incident' | 'end' | null
+let ui = { busy: false, error: '', notice: '', panel: null }; // panel: 'pause' | 'incident' | 'end' | 'order' | null
+// Borrador del pedido: se guarda aparte para que no se pierda lo escrito si la ventana se vuelve a pintar.
+const EMPTY_ORDER = { customerName: '', phone: '', city: '', address: '', notes: '', product: '', qty: '1', price: '', payment: 'contraentrega' };
+let draft = { ...EMPTY_ORDER };
 let data = { auth: null, state: null };
 
 function h(tag, props = {}, ...children) {
@@ -126,7 +129,59 @@ function consentCard(state) {
   );
 }
 
+/** Formulario rápido para crear un pedido en Hermes sin salir del chat. */
+function orderForm() {
+  const field = (key, label, attrs = {}) => {
+    const input = h('input', { value: draft[key], ...attrs });
+    input.addEventListener('input', () => (draft[key] = input.value));
+    return h('label', {}, label, input);
+  };
+  const payment = h('select', {}, h('option', { value: 'contraentrega' }, 'Contraentrega'), h('option', { value: 'pagado' }, 'Ya pagado'));
+  payment.value = draft.payment;
+  payment.addEventListener('change', () => (draft.payment = payment.value));
+  const submit = async () => {
+    const qty = Math.max(1, Math.round(Number(draft.qty) || 1));
+    const price = Math.max(0, Math.round(Number(draft.price) || 0));
+    const missing = !draft.customerName.trim() || !draft.phone.trim() || !draft.city.trim() || draft.address.trim().length < 5 || !draft.product.trim();
+    if (missing) return void ((ui.error = 'Completa nombre, WhatsApp, ciudad, dirección y producto.'), render());
+    ui = { ...ui, busy: true, error: '', notice: '' };
+    render();
+    const res = await chrome.runtime
+      .sendMessage({
+        type: 'createOrder',
+        order: {
+          customerName: draft.customerName.trim(), phone: draft.phone.trim(), city: draft.city.trim(), address: draft.address.trim(), notes: draft.notes.trim(),
+          payment: draft.payment, items: [{ name: draft.product.trim(), qty, price }],
+        },
+      })
+      .catch(() => ({ ok: false, message: 'La extensión no respondió. Vuelve a abrir esta ventana.' }));
+    ui.busy = false;
+    if (!res?.ok) ui.error = res?.message ?? 'No se pudo crear el pedido.';
+    else {
+      draft = { ...EMPTY_ORDER };
+      ui.panel = null;
+      ui.notice = `Pedido ${res.result.code} creado. Hermes ya le pidió la confirmación al cliente.${res.result.possibleDuplicateOf ? ` Ojo: ese número ya tenía abierto el pedido ${res.result.possibleDuplicateOf}.` : ''}`;
+    }
+    render();
+  };
+  return h(
+    'div',
+    { class: 'card' },
+    h('strong', {}, 'Nuevo pedido'),
+    field('customerName', 'Nombre del cliente', { autocomplete: 'off' }),
+    field('phone', 'WhatsApp del cliente', { inputmode: 'tel', placeholder: '300 123 4567', autocomplete: 'off' }),
+    h('div', { class: 'row' }, field('city', 'Ciudad', { autocomplete: 'off' }), h('label', {}, 'Pago', payment)),
+    field('address', 'Dirección completa', { placeholder: 'Calle, número, barrio, apto', autocomplete: 'off' }),
+    field('notes', 'Indicaciones (opcional)', { autocomplete: 'off' }),
+    field('product', 'Producto', { autocomplete: 'off' }),
+    h('div', { class: 'row' }, field('qty', 'Cantidad', { type: 'number', min: '1' }), field('price', 'Precio unitario', { type: 'number', min: '0', placeholder: '0' })),
+    h('div', { class: 'row' }, h('button', { onclick: () => ((ui.panel = null), (ui.error = ''), render()) }, 'Volver'), h('button', { class: 'primary', disabled: ui.busy, onclick: submit }, ui.busy ? 'Creando…' : 'Crear pedido')),
+    h('span', { class: 'small muted' }, 'Queda a tu nombre. Si lleva varios productos, créalo desde la plataforma web.'),
+  );
+}
+
 function idleView(state) {
+  if (ui.panel === 'order') return [orderForm()];
   const sched = state.schedule;
   const consent = consentCard(state);
   const perm = consent ? null : permissionCard(state);
@@ -143,6 +198,7 @@ function idleView(state) {
     consent,
     perm,
     h('button', { class: 'primary', disabled: ui.busy || Boolean(consent) || (Boolean(state.tools?.length) && !state.permissionsOk), onclick: () => send({ type: 'startShift' }) }, 'Iniciar turno'),
+    h('button', { disabled: ui.busy, onclick: () => ((ui.panel = 'order'), render()) }, 'Nuevo pedido'),
     summary
       ? h(
           'div',
@@ -217,16 +273,19 @@ function shiftView(state) {
         ),
       ),
     );
+  } else if (ui.panel === 'order') {
+    out.push(orderForm());
   } else if (ui.panel === 'end') {
     out.push(
       h('div', { class: 'card' }, h('strong', {}, '¿Finalizar el turno?'), h('span', { class: 'small muted' }, 'Se detendrá el registro y se generará tu resumen.'), h('div', { class: 'row' }, h('button', { onclick: () => ((ui.panel = null), render()) }, 'Cancelar'), h('button', { class: 'danger', disabled: ui.busy, onclick: () => send({ type: 'endShift' }) }, 'Finalizar turno'))),
     );
   } else {
     out.push(
+      h('button', { class: 'primary', disabled: ui.busy, onclick: () => ((ui.panel = 'order'), render()) }, 'Nuevo pedido'),
       h(
         'div',
         { class: 'row' },
-        onBreak ? h('button', { class: 'primary', disabled: ui.busy, onclick: () => send({ type: 'endBreak' }) }, 'Reanudar') : h('button', { disabled: ui.busy, onclick: () => ((ui.panel = 'pause'), render()) }, 'Pausa'),
+        onBreak ? h('button', { disabled: ui.busy, onclick: () => send({ type: 'endBreak' }) }, 'Reanudar') : h('button', { disabled: ui.busy, onclick: () => ((ui.panel = 'pause'), render()) }, 'Pausa'),
         h('button', { disabled: ui.busy, onclick: () => ((ui.panel = 'incident'), render()) }, 'Reportar novedad'),
       ),
       h('button', { class: 'danger', disabled: ui.busy, onclick: () => ((ui.panel = 'end'), render()) }, 'Finalizar turno'),
