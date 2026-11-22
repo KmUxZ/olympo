@@ -4,11 +4,13 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/db.ts';
-import { audit, auditBy, badRequest, forbidden, guard, guardPlatform, notFound, parse } from './http.ts';
+import { audit, auditBy, badRequest, forbidden, guard, guardPlatform, notFound, parse, PRODUCTS } from './http.ts';
 import type { Ctx } from './http.ts';
 import { hashPassword, tempPassword } from './security.ts';
 
 const idParam = z.object({ id: z.uuid() });
+/** Productos que hoy existen y se pueden activar. */
+const productsSchema = z.array(z.enum(['argos', 'hermes'])).min(1, 'activa al menos un producto').transform((list) => PRODUCTS.filter((p) => (list as string[]).includes(p)) as string[]);
 const limitsSchema = z.object({
   maxSellers: z.number().int().min(1).max(100000).nullable().optional(),
   maxLines: z.number().int().min(1).max(100000).nullable().optional(),
@@ -29,7 +31,7 @@ function platformAudit(ctx: Ctx, companyId: string, action: string, summary: str
 }
 
 async function getCompany(id: string) {
-  const { rows } = await db.query(`SELECT id, name, status, plan_limits, support_access_until FROM core_companies WHERE id = $1`, [id]);
+  const { rows } = await db.query(`SELECT id, name, status, plan_limits, support_access_until, products FROM core_companies WHERE id = $1`, [id]);
   if (!rows.length) throw notFound('Empresa no encontrada.');
   return rows[0];
 }
@@ -39,7 +41,7 @@ export function platformRoutes(app: FastifyInstance): void {
     const [companies, admins] = await Promise.all([
       db.query(
         `SELECT c.id, c.name, c.timezone, c.is_demo AS "isDemo", c.status, c.suspended_reason AS "suspendedReason",
-                c.plan_limits AS limits, c.support_access_until AS "supportAccessUntil", c.created_at AS "createdAt",
+                c.plan_limits AS limits, c.products, c.support_access_until AS "supportAccessUntil", c.created_at AS "createdAt",
                 (SELECT count(*)::int FROM core_users u WHERE u.company_id = c.id AND u.status = 'active') AS users,
                 (SELECT count(*)::int FROM core_users u WHERE u.company_id = c.id AND u.status = 'active' AND u.role = 'seller') AS sellers,
                 (SELECT count(*)::int FROM argos_lines l WHERE l.company_id = c.id AND l.active) AS lines,
@@ -67,6 +69,7 @@ export function platformRoutes(app: FastifyInstance): void {
         adminName: z.string().trim().min(2).max(120),
         adminEmail: z.email().max(200).transform((s) => s.trim().toLowerCase()),
         limits: limitsSchema.default({}),
+        products: productsSchema.default(['argos']),
       }),
       req.body,
     );
@@ -77,11 +80,11 @@ export function platformRoutes(app: FastifyInstance): void {
     const password = tempPassword();
     const hash = await hashPassword(password);
     const companyId = await db.tx(async (q) => {
-      const company = (await q.query(`INSERT INTO core_companies (name, timezone, plan_limits) VALUES ($1, $2, $3::jsonb) RETURNING id`, [body.name, body.timezone, JSON.stringify(body.limits)])).rows[0];
+      const company = (await q.query(`INSERT INTO core_companies (name, timezone, plan_limits, products) VALUES ($1, $2, $3::jsonb, $4::jsonb) RETURNING id`, [body.name, body.timezone, JSON.stringify(body.limits), JSON.stringify(body.products)])).rows[0];
       await q.query(`INSERT INTO core_users (company_id, email, name, role, password_hash) VALUES ($1, $2, $3, 'admin', $4)`, [company.id, body.adminEmail, body.adminName, hash]);
       return company.id as string;
     });
-    await platformAudit(req.ctx, companyId, 'plataforma.empresa_creada', `Se creó la empresa ${body.name} con ${body.adminName} como administrador`, { limits: body.limits });
+    await platformAudit(req.ctx, companyId, 'plataforma.empresa_creada', `Se creó la empresa ${body.name} con ${body.adminName} como administrador`, { limits: body.limits, products: body.products });
     return { id: companyId, tempPassword: password, adminEmail: body.adminEmail };
   });
 
@@ -93,6 +96,7 @@ export function platformRoutes(app: FastifyInstance): void {
         status: z.enum(['active', 'suspended']).optional(),
         suspendedReason: z.string().trim().max(300).optional(),
         limits: limitsSchema.optional(),
+        products: productsSchema.optional(),
       }),
       req.body,
     );
@@ -102,9 +106,13 @@ export function platformRoutes(app: FastifyInstance): void {
     const name = body.name ?? company.name;
     const status = body.status ?? company.status;
     const limits = body.limits ?? company.plan_limits;
-    await db.query(`UPDATE core_companies SET name = $2, status = $3, suspended_reason = $4, plan_limits = $5::jsonb WHERE id = $1`, [
-      id, name, status, status === 'suspended' ? (body.suspendedReason ?? '') : '', JSON.stringify(limits),
+    const products = body.products ?? company.products;
+    await db.query(`UPDATE core_companies SET name = $2, status = $3, suspended_reason = $4, plan_limits = $5::jsonb, products = $6::jsonb WHERE id = $1`, [
+      id, name, status, status === 'suspended' ? (body.suspendedReason ?? '') : '', JSON.stringify(limits), JSON.stringify(products),
     ]);
+    if (body.products && JSON.stringify(body.products) !== JSON.stringify(company.products)) {
+      await platformAudit(req.ctx, id, 'plataforma.productos', `Productos activos: ${body.products.join(', ')}`, { antes: company.products, despues: body.products });
+    }
 
     if (status !== company.status) {
       if (status === 'suspended') {

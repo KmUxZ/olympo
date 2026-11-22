@@ -46,3 +46,24 @@ export function OlympoLogo({ size = 28, color }: { size?: number; color?: string
     </span>
   );
 }
+
+/** Isotipo de Hermes: alas en movimiento, en el azul del ecosistema. */
+export function HermesMark({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <g fill="var(--brand-blue)">
+        <path d="M9 4h13l-2.4 4H6.6z" />
+        <path d="M5.4 10h11.2l-2.4 4H3z" />
+        <path d="M6.6 16h7.2l-2.4 4H4.2z" />
+      </g>
+    </svg>
+  );
+}
+
+/** Catálogo de productos del ecosistema: nombre, lema, marca y a dónde lleva cada uno. */
+export const PRODUCT_INFO: Record<string, { name: string; tagline: string; home: string; available: boolean; Mark: (p: { size?: number }) => React.JSX.Element }> = {
+  argos: { name: 'Argos', tagline: 'Equipo', home: '/', available: true, Mark: ArgosMark },
+  hermes: { name: 'Hermes', tagline: 'Logística', home: '/hermes/pedidos', available: true, Mark: HermesMark },
+  zeus: { name: 'Zeus', tagline: 'CRM', home: '/', available: false, Mark: ({ size }) => <OlympoMark size={size} /> },
+  athena: { name: 'Athena', tagline: 'Chatbot IA', home: '/', available: false, Mark: ({ size }) => <OlympoMark size={size} /> },
+};

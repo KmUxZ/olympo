@@ -19,7 +19,7 @@ export interface Ctx {
   teamId: string | null;
   mustChangePassword: boolean;
   ip: string;
-  company: { id: string; name: string; timezone: string; isDemo: boolean; settings: CompanySettings; supportAccessUntil: Date | null };
+  company: { id: string; name: string; timezone: string; isDemo: boolean; settings: CompanySettings; supportAccessUntil: Date | null; products: string[] };
   /** Opera la plataforma OLYMPO (gestiona empresas cliente). */
   isPlatformAdmin: boolean;
   /** true cuando una persona de plataforma está dentro de una empresa cliente con acceso de soporte concedido. */
@@ -57,6 +57,8 @@ export function parse<T>(schema: z.ZodType<T>, data: unknown): T {
 }
 
 export const SESSION_COOKIE = 'olympo_session';
+/** Productos del ecosistema. El prefijo de sus rutas (/api/<producto>/) coincide con este nombre. */
+export const PRODUCTS = ['argos', 'hermes', 'zeus', 'athena'] as const;
 
 async function authenticate(req: FastifyRequest): Promise<Ctx> {
   const header = req.headers.authorization;
@@ -80,7 +82,7 @@ async function authenticate(req: FastifyRequest): Promise<Ctx> {
     (
       await db.query(
         `SELECT s.id AS session_id, s.client, s.support_company_id, u.id, u.role, u.name, u.email, u.team_id, u.must_change_password, u.is_platform_admin,
-                c.id AS company_id, c.name AS company_name, c.timezone, c.is_demo, c.settings, c.status AS company_status, c.support_access_until
+                c.id AS company_id, c.name AS company_name, c.timezone, c.is_demo, c.settings, c.status AS company_status, c.support_access_until, c.products
            FROM core_sessions s
            JOIN core_users u ON u.id = s.user_id
            JOIN core_companies c ON c.id = COALESCE(s.support_company_id, u.company_id)
@@ -117,7 +119,7 @@ async function authenticate(req: FastifyRequest): Promise<Ctx> {
     teamId: support ? null : r.team_id,
     mustChangePassword: r.must_change_password,
     ip: req.ip,
-    company: { id: r.company_id, name: r.company_name, timezone: r.timezone, isDemo: r.is_demo, settings: resolveSettings(r.settings), supportAccessUntil: r.support_access_until },
+    company: { id: r.company_id, name: r.company_name, timezone: r.timezone, isDemo: r.is_demo, settings: resolveSettings(r.settings), supportAccessUntil: r.support_access_until, products: Array.isArray(r.products) ? r.products : [] },
     isPlatformAdmin: r.is_platform_admin,
     support,
   };
@@ -129,6 +131,11 @@ export function guard(...roles: Role[]) {
     preHandler: async (req: FastifyRequest) => {
       req.ctx = await authenticate(req);
       if (roles.length && !roles.includes(req.ctx.role)) throw forbidden();
+      // Cada producto del ecosistema se contrata por separado: sus rutas solo responden si la empresa lo tiene activo.
+      const product = PRODUCTS.find((p) => req.url.startsWith(`/api/${p}/`));
+      if (product && !req.ctx.company.products.includes(product)) {
+        throw new HttpError(403, 'producto_no_contratado', `Tu empresa no tiene activo ${product.charAt(0).toUpperCase() + product.slice(1)}.`);
+      }
       if (req.ctx.mustChangePassword && !req.url.startsWith('/api/auth/')) {
         throw new HttpError(403, 'cambio_contrasena_requerido', 'Debes cambiar tu contraseña temporal antes de continuar.');
       }

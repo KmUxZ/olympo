@@ -39,28 +39,38 @@ function App() {
   if (loading) return <Loading />;
   if (!me) return <Login />;
   if (me.user.mustChangePassword) return <ChangePassword forced />;
-  const home = me.user.role === 'seller' ? '/mi-turno' : '/dashboard';
+  // Cada empresa ve solo los productos que tiene contratados.
+  const has = (p: string) => me.company.products.includes(p);
+  const home = !has('argos') && has('hermes') ? '/hermes/pedidos' : me.user.role === 'seller' ? '/mi-turno' : '/dashboard';
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/dashboard" element={<Only roles={['admin', 'supervisor']}><Dashboard /></Only>} />
-        <Route path="/mi-turno" element={<MyShift />} />
-        <Route path="/novedades" element={<Incidents />} />
-        <Route path="/turnos" element={<Only roles={['admin', 'supervisor']}><Shifts /></Only>} />
-        <Route path="/lineas" element={<Only roles={['admin', 'supervisor']}><Lines /></Only>} />
+        {has('argos') && (
+          <>
+            <Route path="/dashboard" element={<Only roles={['admin', 'supervisor']}><Dashboard /></Only>} />
+            <Route path="/mi-turno" element={<MyShift />} />
+            <Route path="/novedades" element={<Incidents />} />
+            <Route path="/turnos" element={<Only roles={['admin', 'supervisor']}><Shifts /></Only>} />
+            <Route path="/lineas" element={<Only roles={['admin', 'supervisor']}><Lines /></Only>} />
+            <Route path="/configuracion" element={<Only roles={['admin']}><Settings /></Only>} />
+            <Route path="/agenda" element={<Agenda />} />
+            <Route path="/mensajes" element={<Messages />} />
+            <Route path="/acompanamiento" element={<Coaching />} />
+            <Route path="/calidad" element={<Quality />} />
+            <Route path="/reportes" element={<Only roles={['admin', 'supervisor']}><Reports /></Only>} />
+            <Route path="/alarmas" element={<Only roles={['admin', 'supervisor']}><Alarms /></Only>} />
+            <Route path="/que-se-registra" element={<Privacy />} />
+          </>
+        )}
+        {has('hermes') && (
+          <>
+            <Route path="/hermes/pedidos" element={<HermesOrders />} />
+            <Route path="/hermes/novedades" element={<Only roles={['admin', 'supervisor']}><HermesIncidents /></Only>} />
+            <Route path="/hermes/panel" element={<Only roles={['admin', 'supervisor']}><HermesPanel /></Only>} />
+          </>
+        )}
         <Route path="/usuarios" element={<Only roles={['admin']}><Users /></Only>} />
         <Route path="/auditoria" element={<Only roles={['admin']}><Audit /></Only>} />
-        <Route path="/configuracion" element={<Only roles={['admin']}><Settings /></Only>} />
-        <Route path="/hermes/pedidos" element={<HermesOrders />} />
-        <Route path="/hermes/novedades" element={<Only roles={['admin', 'supervisor']}><HermesIncidents /></Only>} />
-        <Route path="/hermes/panel" element={<Only roles={['admin', 'supervisor']}><HermesPanel /></Only>} />
-        <Route path="/agenda" element={<Agenda />} />
-        <Route path="/mensajes" element={<Messages />} />
-        <Route path="/acompanamiento" element={<Coaching />} />
-        <Route path="/calidad" element={<Quality />} />
-        <Route path="/reportes" element={<Only roles={['admin', 'supervisor']}><Reports /></Only>} />
-        <Route path="/alarmas" element={<Only roles={['admin', 'supervisor']}><Alarms /></Only>} />
-        <Route path="/que-se-registra" element={<Privacy />} />
         {me.user.isPlatformAdmin && <Route path="/plataforma" element={<Platform />} />}
         <Route path="*" element={<Navigate to={home} replace />} />
       </Route>

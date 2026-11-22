@@ -3,10 +3,29 @@ import { useAuth } from '../auth';
 import { api, useApi, useNow } from '../lib/api';
 import { ago, fmtDate, fmtDateTime } from '../lib/format';
 import { Badge, Empty, ErrorNote, Field, FormModal, Freshness, Loading, Modal, PageHero } from '../components/ui';
+import { PRODUCT_INFO } from '../components/brand';
+
+/** Casillas de los productos que la empresa tiene contratados. */
+function ProductFields({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  return (
+    <fieldset className="stack" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-3)' }}>
+      <legend className="small muted">Productos contratados</legend>
+      <div className="checks">
+        {Object.entries(PRODUCT_INFO).map(([key, p]) => (
+          <label key={key} style={p.available ? undefined : { opacity: 0.55 }}>
+            <input type="checkbox" disabled={!p.available} checked={value.includes(key)} onChange={(e) => onChange(e.target.checked ? [...value, key] : value.filter((x) => x !== key))} />
+            {p.name} · {p.tagline}{!p.available && ' (próximamente)'}
+          </label>
+        ))}
+      </div>
+      <span className="small muted">La empresa solo ve y puede usar lo que tenga marcado.</span>
+    </fieldset>
+  );
+}
 
 interface Company {
   id: string; name: string; timezone: string; isDemo: boolean; status: 'active' | 'suspended'; suspendedReason: string;
-  limits: { maxSellers?: number | null; maxLines?: number | null }; supportAccessUntil: string | null; createdAt: string;
+  limits: { maxSellers?: number | null; maxLines?: number | null }; products: string[]; supportAccessUntil: string | null; createdAt: string;
   users: number; sellers: number; lines: number; activeShifts: number; lastUsedAt: string | null; connectedLines: number; connectionErrors: number;
   admins: { id: string; name: string; email: string }[];
 }
@@ -65,6 +84,7 @@ export function Platform() {
                     <tr key={c.id}>
                       <td>
                         <strong>{c.name}</strong> {c.isDemo && <Badge tone="warn">Demo</Badge>}
+                        <span className="sub">Productos: {c.products.map((p) => PRODUCT_INFO[p]?.name ?? p).join(', ') || 'ninguno'}</span>
                         <span className="sub">Desde {fmtDate(c.createdAt)} · {c.timezone}</span>
                         <span className="sub">{c.admins.length ? `Admin: ${c.admins.map((a) => a.email).join(', ')}` : 'Sin administrador activo'}</span>
                       </td>
@@ -160,8 +180,10 @@ function CreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: (c: {
   const [adminName, setAdminName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [limits, setLimits] = useState({ maxSellers: '', maxLines: '' });
+  const [products, setProducts] = useState<string[]>(['argos']);
   async function save() {
-    const res = await api('POST', '/api/platform/companies', { name, timezone, adminName, adminEmail, limits: toLimits(limits.maxSellers, limits.maxLines) });
+    if (!products.length) throw new Error('Activa al menos un producto.');
+    const res = await api('POST', '/api/platform/companies', { name, timezone, adminName, adminEmail, products, limits: toLimits(limits.maxSellers, limits.maxLines) });
     await onSaved({ email: res.adminEmail, password: res.tempPassword });
   }
   return (
@@ -174,6 +196,7 @@ function CreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: (c: {
         <div className="grow"><Field label="Nombre del administrador"><input required minLength={2} value={adminName} onChange={(e) => setAdminName(e.target.value)} /></Field></div>
         <div className="grow"><Field label="Correo del administrador"><input required type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} /></Field></div>
       </div>
+      <ProductFields value={products} onChange={setProducts} />
       <LimitFields {...limits} onChange={(k, v) => setLimits({ ...limits, [k]: v })} />
     </FormModal>
   );
@@ -184,13 +207,16 @@ function ManageModal({ company, onClose, onSaved, onResetAdmin }: { company: Com
   const [suspended, setSuspended] = useState(company.status === 'suspended');
   const [reason, setReason] = useState(company.suspendedReason);
   const [limits, setLimits] = useState({ maxSellers: String(company.limits.maxSellers ?? ''), maxLines: String(company.limits.maxLines ?? '') });
+  const [products, setProducts] = useState<string[]>(company.products);
   async function save() {
-    await api('PATCH', `/api/platform/companies/${company.id}`, { name, status: suspended ? 'suspended' : 'active', suspendedReason: reason, limits: toLimits(limits.maxSellers, limits.maxLines) });
+    if (!products.length) throw new Error('Activa al menos un producto.');
+    await api('PATCH', `/api/platform/companies/${company.id}`, { name, status: suspended ? 'suspended' : 'active', suspendedReason: reason, products, limits: toLimits(limits.maxSellers, limits.maxLines) });
     await onSaved();
   }
   return (
     <FormModal title={`Gestionar · ${company.name}`} onClose={onClose} onSubmit={save}>
       <Field label="Nombre de la empresa"><input required minLength={2} value={name} onChange={(e) => setName(e.target.value)} /></Field>
+      <ProductFields value={products} onChange={setProducts} />
       <LimitFields {...limits} onChange={(k, v) => setLimits({ ...limits, [k]: v })} />
       <fieldset className="stack" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-3)' }}>
         <legend className="small muted">Estado</legend>

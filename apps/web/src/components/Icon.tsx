@@ -25,6 +25,7 @@ const ICONS: Record<string, ReactNode> = {
   pulse: P('M3 12h4l3-8 4 16 3-8h4'),
   note: <><rect x="5" y="3" width="14" height="18" rx="2" />{P('M9 8h6M9 12h6M9 16h3')}</>,
   check: P('M4 12.5 9.5 18 20 6.5'),
+  chevron: P('m7 9 5 5 5-5'),
   box: P('m3 7.5 9-4.5 9 4.5v9l-9 4.5-9-4.5zM3 7.5l9 4.5 9-4.5M12 12v9'),
 };
 
