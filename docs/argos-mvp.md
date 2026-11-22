@@ -202,3 +202,8 @@ Límite: valida la forma, no que la dirección exista ni la cobertura de la tran
 e hitos del pedido. Una persona puede tomar la conversación (pausa el bot en ese pedido) y devolverla; responder como persona
 quita el pendiente. Incluye respuestas sugeridas según el estado, reenvío de la confirmación y marca de no leídos.
 Pendiente: conversaciones de números sin pedido (llegarán con el canal real) y asignación de chats a personas concretas.
+
+## Hermes · importación en lote y clientes bloqueados
+
+- **Importar en lote** (Pedidos → «Importar en lote», admin y supervisor): se pegan filas desde Excel/Sheets o se sube un CSV (hasta 300 filas). Si va la fila de títulos, el orden de columnas no importa. Primero hay una vista previa (`POST /api/hermes/import/preview`) que no crea nada y marca cada fila como lista, lista con avisos o no creable; luego `POST /api/hermes/import` crea solo las válidas y devuelve las omitidas con su motivo. Cada fila pasa por las mismas reglas que un pedido manual (teléfono, dirección completa, cliente bloqueado). Un teléfono repetido en el archivo o con pedido abierto es aviso, no bloqueo.
+- **Clientes bloqueados** (`hermes_blocked`, por empresa y teléfono): se bloquea desde su pantalla o desde el chat, con motivo obligatorio. Hermes rechaza crearles pedidos (409 `cliente_bloqueado`) a mano, por importación y desde la extensión; el validador lo avisa mientras se escribe. Los pedidos en curso no cambian. Bloquear, desbloquear e importar quedan en auditoría.

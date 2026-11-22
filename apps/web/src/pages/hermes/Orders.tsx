@@ -5,6 +5,7 @@ import { fmtDateTime } from '../../lib/format';
 import { Badge, Empty, ErrorNote, Field, FormModal, Freshness, Loading, PageHero } from '../../components/ui';
 import { itemsLabel, money, OrderDetailModal, ORDER_STATUS, ValidationBox } from './shared';
 import type { Validation } from './shared';
+import { ImportModal } from './Import';
 
 interface Order { id: string; code: string; customerName: string; phone: string; city: string; items: { name: string; qty: number; free?: boolean }[]; total: number; payment: string; status: string; attention: boolean; attentionReason: string; addressCheck: { level: string } | null; customerRisk: string; sellerName: string | null; carrier: string; trackingNumber: string; createdAt: string }
 
@@ -16,6 +17,7 @@ export function HermesOrders() {
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const path = useMemo(() => {
     const q = new URLSearchParams();
@@ -42,6 +44,7 @@ export function HermesOrders() {
         ]}
       >
         <button className="btn primary" onClick={() => setCreating(true)}>Nuevo pedido</button>
+        {me!.user.role !== 'seller' && <button className="btn" onClick={() => setImporting(true)}>Importar en lote</button>}
         <Freshness updatedAt={list.updatedAt} error={list.error} />
       </PageHero>
       {notice && <div className="alert ok" role="status">{notice}</div>}
@@ -102,6 +105,7 @@ export function HermesOrders() {
           }}
         />
       )}
+      {importing && <ImportModal onClose={() => setImporting(false)} onImported={() => void list.reload()} />}
       {open && <OrderDetailModal orderId={open} onClose={() => setOpen(null)} onChanged={() => void list.reload()} />}
     </>
   );
@@ -126,6 +130,7 @@ function CreateOrderModal({ canAssign, onClose, onSaved }: { canAssign: boolean;
     return () => clearTimeout(id);
   }, [f.address, f.neighborhood, f.city, f.phone, f.customerName]);
   const blocked = Boolean(validation?.address?.issues.some((i) => i.severity === 'error'));
+  const customerBlocked = Boolean(validation?.blocked);
 
   async function save() {
     if (!valid.length) throw new Error('Añade al menos un producto.');
@@ -149,6 +154,7 @@ function CreateOrderModal({ canAssign, onClose, onSaved }: { canAssign: boolean;
         <div className="grow"><Field label="Ciudad"><input required minLength={2} value={f.city} onChange={set('city')} /></Field></div>
       </div>
       <ValidationBox value={validation} />
+      {customerBlocked && <div className="alert danger" role="alert">Este cliente está en la lista de bloqueados: no se le puede crear el pedido. Un supervisor puede desbloquearlo en «Clientes bloqueados».</div>}
       {blocked && <div className="alert danger" role="alert">Completa la dirección para poder crear el pedido. Una dirección incompleta es la causa más frecuente de devolución.</div>}
       <Field label="Indicaciones para la entrega (opcional)"><input maxLength={300} value={f.notes} onChange={set('notes')} placeholder="Ej.: portería, dejar con el vecino, llamar antes" /></Field>
 

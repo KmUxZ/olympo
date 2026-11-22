@@ -10,6 +10,7 @@ import { Badge, Empty, ErrorNote, Freshness, Loading } from '../../components/ui
 import { Icon } from '../../components/Icon';
 import { CUSTOMER_CHOICE, EVENT_LABEL, INCIDENT_STATUS, INCIDENT_TYPE, itemsLabel, money, OrderDetailModal, ORDER_STATUS, STEPS, ValidationBox } from './shared';
 import type { Message } from './shared';
+import { BlockCustomerModal } from './Blocked';
 
 interface Chat {
   id: string; code: string; customerName: string; phone: string; city: string; status: string; awaiting: string | null;
@@ -152,6 +153,8 @@ function Conversation({ orderId, agent, onChanged }: { orderId: string; agent: s
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [manage, setManage] = useState(false);
+  const [blocking, setBlocking] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const messageCount = detail.data?.messages.length ?? 0;
   const lastInbound = detail.data?.messages.filter((m: Message) => m.direction === 'in').length ?? 0;
@@ -292,6 +295,8 @@ function Conversation({ orderId, agent, onChanged }: { orderId: string; agent: s
             {o.sellerName && <><dt>Venta de</dt><dd>{o.sellerName}</dd></>}
             <dt>Creado</dt><dd>{fmtDateTime(o.createdAt)}</dd>
           </dl>
+          {notice && <div className="alert ok" role="status">{notice}</div>}
+          <div><button className="btn sm danger" onClick={() => setBlocking(true)}>Bloquear cliente</button></div>
         </div>
 
         {(o.addressCheck?.level !== 'completa' || o.customerRisk === 'alto' || o.customerRisk === 'medio') && !final && (
@@ -327,6 +332,7 @@ function Conversation({ orderId, agent, onChanged }: { orderId: string; agent: s
         )}
       </aside>
 
+      {blocking && <BlockCustomerModal phone={o.phone} name={o.customerName} onClose={() => setBlocking(false)} onSaved={() => { setBlocking(false); setNotice('Cliente bloqueado: no se le podrán crear pedidos nuevos.'); }} />}
       {manage && <OrderDetailModal orderId={orderId} onClose={() => { setManage(false); void detail.reload(); onChanged(); }} onChanged={() => { void detail.reload(); onChanged(); }} />}
     </>
   );

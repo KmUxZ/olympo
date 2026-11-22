@@ -4,7 +4,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/db.ts';
-import { auditBy, badRequest, forbidden, guard, notFound, parse } from '../core/http.ts';
+import { auditBy, badRequest, forbidden, guard, HttpError, notFound, parse } from '../core/http.ts';
 import type { Ctx } from '../core/http.ts';
 import * as bot from './bot.ts';
 import { checkAddress, checkContact, composeAddress, summarizeHistory } from './address.ts';
@@ -63,6 +63,132 @@ async function loadOrder(ctx: Ctx, id: string): Promise<bot.Order> {
   return o;
 }
 
+
+type OrderInput = z.infer<typeof orderBody>;
+
+async function blockedInfo(companyId: string, phone: string): Promise<{ reason: string } | null> {
+  const { rows } = await db.query(`SELECT reason FROM hermes_blocked WHERE company_id = $1 AND phone = $2`, [companyId, phone]);
+  return rows[0] ?? null;
+}
+
+/**
+ * Revisa un pedido antes de crearlo: teléfono, dirección, cliente bloqueado, historial y duplicados.
+ * `errors` impiden crearlo; `warnings` solo informan. Lo usan el formulario y la importación en lote.
+ */
+async function inspectOrder(ctx: Ctx, b: OrderInput) {
+  const phone = bot.normalizePhone(b.phone);
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  let errorCode = 'solicitud_invalida';
+  const fail = (code: string, message: string) => {
+    if (!errors.length) errorCode = code;
+    errors.push(message);
+  };
+  const phoneOk = phone.length >= 10;
+  if (!phoneOk) fail('telefono_invalido', 'El teléfono no parece válido. Escríbelo con indicativo o como celular de 10 dígitos.');
+
+  const fullAddress = composeAddress(b.address, b.neighborhood);
+  const addressCheck = checkAddress(fullAddress, b.city);
+  // Una dirección incompleta es la primera causa de devolución: sin los datos obligatorios el pedido no se crea.
+  const addressErrors = addressCheck.issues.filter((i) => i.severity === 'error');
+  if (addressErrors.length) fail('direccion_incompleta', `La dirección está incompleta. ${addressErrors.map((i) => i.message).join(' ')}`);
+  for (const i of addressCheck.issues.filter((x) => x.severity === 'aviso')) warnings.push(i.message);
+
+  const blocked = phoneOk ? await blockedInfo(ctx.companyId, phone) : null;
+  if (blocked) fail('cliente_bloqueado', `Este cliente está bloqueado: ${blocked.reason}`);
+
+  const history = phoneOk ? await customerHistory(ctx.companyId, phone) : summarizeHistory({ delivered: 0, returned: 0, cancelled: 0, refused: 0, open: 0 });
+  if (history.risk === 'alto' || history.risk === 'medio') warnings.push(history.message);
+  for (const i of checkContact(phone, b.customerName).filter((x) => x.severity === 'aviso')) warnings.push(i.message);
+
+  // Mismo teléfono con un pedido abierto: suele ser un duplicado.
+  const dup = phoneOk ? (await db.query(`SELECT code FROM hermes_orders WHERE company_id = $1 AND phone = $2 AND status NOT IN ('entregado', 'devuelto', 'cancelado') LIMIT 1`, [ctx.companyId, phone])).rows[0] : null;
+  if (dup) warnings.push(`Posible duplicado: este teléfono ya tiene abierto el pedido ${dup.code}.`);
+
+  return { phone, fullAddress, addressCheck, history, duplicateOf: (dup?.code as string | undefined) ?? null, errors, warnings, errorCode };
+}
+
+async function createOrder(ctx: Ctx, b: OrderInput, pre: Awaited<ReturnType<typeof inspectOrder>>, source: string) {
+  const sellerId = ctx.role === 'seller' ? ctx.userId : (b.sellerUserId ?? null);
+  if (sellerId && sellerId !== ctx.userId) {
+    const ok = await db.query(`SELECT 1 FROM core_users WHERE id = $1 AND company_id = $2`, [sellerId, ctx.companyId]);
+    if (!ok.rows.length) throw badRequest('La persona indicada no existe.');
+  }
+  const total = b.items.reduce((n, i) => n + i.qty * i.price, 0);
+
+  // Número de pedido consecutivo por empresa.
+  const counter = await db.query(
+    `INSERT INTO hermes_settings (company_id, next_number) VALUES ($1, 2)
+     ON CONFLICT (company_id) DO UPDATE SET next_number = hermes_settings.next_number + 1 RETURNING next_number - 1 AS n`,
+    [ctx.companyId],
+  );
+  const code = `H-${String(counter.rows[0].n).padStart(6, '0')}`;
+  const { rows } = await db.query(
+    `INSERT INTO hermes_orders (company_id, code, customer_name, phone, address, city, department, notes, items, total, payment, seller_user_id, external_ref, created_by, address_check, customer_risk, source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $14, $15::jsonb, $16, $17) RETURNING *`,
+    [
+      ctx.companyId, code, b.customerName, pre.phone, pre.fullAddress, pre.addressCheck.city?.name ?? b.city, b.department || pre.addressCheck.city?.department || '', b.notes,
+      JSON.stringify(b.items), total, b.payment, sellerId, b.externalRef, ctx.userId, JSON.stringify(pre.addressCheck), pre.history.risk, source,
+    ],
+  );
+  const order: bot.Order = rows[0];
+  await bot.logEvent(order, 'creado', source === 'importacion' ? `Pedido importado por ${ctx.name}` : `Pedido creado por ${ctx.name}`, ctx.name);
+  if (pre.duplicateOf) await bot.setAttention(order, `Posible duplicado: este teléfono ya tiene abierto el pedido ${pre.duplicateOf}`);
+  else if (pre.history.risk === 'alto') await bot.setAttention(order, `Cliente de riesgo: ${pre.history.message}`);
+  if (pre.addressCheck.level !== 'completa') await bot.logEvent(order, 'direccion_por_revisar', pre.addressCheck.issues.map((i) => i.message).join(' '));
+  await bot.startConfirmation(order);
+  return { id: order.id, code, possibleDuplicateOf: pre.duplicateOf, addressLevel: pre.addressCheck.level, customerRisk: pre.history.risk };
+}
+
+/** Una fila de la importación en lote, tal como llega de la hoja de cálculo. */
+const importRow = z.object({
+  customerName: z.string().max(120).default(''),
+  phone: z.string().max(25).default(''),
+  address: z.string().max(300).default(''),
+  neighborhood: z.string().max(80).default(''),
+  city: z.string().max(80).default(''),
+  products: z.string().max(400).default(''),
+  total: z.union([z.number(), z.string()]).default(0),
+  payment: z.string().max(30).default(''),
+  notes: z.string().max(300).default(''),
+  seller: z.string().max(200).default(''),
+  externalRef: z.string().max(120).default(''),
+});
+const importBody = z.object({ rows: z.array(importRow).min(1).max(300) });
+
+/** Convierte una fila de la hoja en un pedido, resolviendo la vendedora por nombre o correo. */
+async function rowToOrder(ctx: Ctx, row: z.infer<typeof importRow>, sellers: { id: string; name: string; email: string }[]) {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const total = Math.round(Number(String(row.total).replace(/[^\d]/g, '')) || 0);
+  const paid = /pag/i.test(row.payment) && !/contra/i.test(row.payment);
+  if (!row.customerName.trim()) errors.push('Falta el nombre del cliente.');
+  if (!row.products.trim()) errors.push('Faltan los productos.');
+  if (!total && !paid) errors.push('Falta el valor a cobrar.');
+  let sellerUserId: string | null = null;
+  if (row.seller.trim()) {
+    const key = row.seller.trim().toLowerCase();
+    const found = sellers.find((s) => s.email.toLowerCase() === key || s.name.toLowerCase() === key) ?? sellers.find((s) => s.name.toLowerCase().includes(key));
+    if (found) sellerUserId = found.id;
+    else warnings.push(`No se encontró la vendedora «${row.seller.trim()}»: el pedido quedará sin atribuir.`);
+  }
+  const parsed = orderBody.safeParse({
+    customerName: row.customerName, phone: row.phone, address: row.address, neighborhood: row.neighborhood, city: row.city, notes: row.notes,
+    payment: paid ? 'pagado' : 'contraentrega', sellerUserId, externalRef: row.externalRef,
+    items: [{ free: true, name: row.products.trim() || 'x', qty: 1, price: total }],
+  });
+  if (!parsed.success) {
+    const field: Record<string, string> = { customerName: 'el nombre', phone: 'el teléfono', address: 'la dirección', city: 'la ciudad' };
+    for (const issue of parsed.error.issues) {
+      const f = field[String(issue.path[0])];
+      if (f && !errors.some((e) => e.includes(f.split(' ')[1]))) errors.push(`Revisa ${f}.`);
+    }
+    return { order: null, pre: null, errors: errors.length ? errors : ['Datos no válidos.'], warnings };
+  }
+  const pre = await inspectOrder(ctx, parsed.data);
+  return { order: parsed.data, pre, errors: [...errors, ...pre.errors], warnings: [...warnings, ...pre.warnings] };
+}
+
 export function hermesRoutes(app: FastifyInstance): void {
   // ───────── Pedidos ─────────
   app.get('/api/hermes/orders', guard(), async (req) => {
@@ -107,53 +233,15 @@ export function hermesRoutes(app: FastifyInstance): void {
     // Solo se opina de lo que ya se escribió.
     const contact = checkContact(phone, b.customerName).filter((i) => (i.code.startsWith('telefono') ? Boolean(b.phone.trim()) : Boolean(b.customerName.trim())));
     const history = phone.length >= 10 ? await customerHistory(req.ctx.companyId, phone) : null;
-    return { address, contact, history };
+    const blocked = phone.length >= 10 ? await blockedInfo(req.ctx.companyId, phone) : null;
+    return { address, contact, history, blocked };
   });
 
   app.post('/api/hermes/orders', guard(), async (req) => {
-    const ctx = req.ctx;
     const b = parse(orderBody, req.body);
-    const phone = bot.normalizePhone(b.phone);
-    if (phone.length < 10) throw badRequest('El teléfono no parece válido. Escríbelo con indicativo o como celular de 10 dígitos.');
-    const fullAddress = composeAddress(b.address, b.neighborhood);
-    const addressCheck = checkAddress(fullAddress, b.city);
-    // Una dirección incompleta es la primera causa de devolución: sin los datos obligatorios el pedido no se crea.
-    const blocking = addressCheck.issues.filter((i) => i.severity === 'error');
-    if (blocking.length) throw badRequest(`La dirección está incompleta. ${blocking.map((i) => i.message).join(' ')}`, 'direccion_incompleta');
-    const history = await customerHistory(ctx.companyId, phone);
-    const sellerId = ctx.role === 'seller' ? ctx.userId : (b.sellerUserId ?? null);
-    if (sellerId && sellerId !== ctx.userId) {
-      const ok = await db.query(`SELECT 1 FROM core_users WHERE id = $1 AND company_id = $2`, [sellerId, ctx.companyId]);
-      if (!ok.rows.length) throw badRequest('La persona indicada no existe.');
-    }
-    const total = b.items.reduce((n, i) => n + i.qty * i.price, 0);
-
-    // Número de pedido consecutivo por empresa.
-    const counter = await db.query(
-      `INSERT INTO hermes_settings (company_id, next_number) VALUES ($1, 2)
-       ON CONFLICT (company_id) DO UPDATE SET next_number = hermes_settings.next_number + 1 RETURNING next_number - 1 AS n`,
-      [ctx.companyId],
-    );
-    const code = `H-${String(counter.rows[0].n).padStart(6, '0')}`;
-
-    // Aviso si el mismo teléfono ya tiene un pedido abierto: suele ser un duplicado.
-    const duplicate = await db.query(`SELECT code FROM hermes_orders WHERE company_id = $1 AND phone = $2 AND status NOT IN ('entregado', 'devuelto', 'cancelado') LIMIT 1`, [ctx.companyId, phone]);
-
-    const { rows } = await db.query(
-      `INSERT INTO hermes_orders (company_id, code, customer_name, phone, address, city, department, notes, items, total, payment, seller_user_id, external_ref, created_by, address_check, customer_risk)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $14, $15::jsonb, $16) RETURNING *`,
-      [
-        ctx.companyId, code, b.customerName, phone, fullAddress, addressCheck.city?.name ?? b.city, b.department || addressCheck.city?.department || '', b.notes,
-        JSON.stringify(b.items), total, b.payment, sellerId, b.externalRef, ctx.userId, JSON.stringify(addressCheck), history.risk,
-      ],
-    );
-    const order: bot.Order = rows[0];
-    await bot.logEvent(order, 'creado', `Pedido creado por ${ctx.name}`, ctx.name);
-    if (duplicate.rows.length) await bot.setAttention(order, `Posible duplicado: este teléfono ya tiene abierto el pedido ${duplicate.rows[0].code}`);
-    else if (history.risk === 'alto') await bot.setAttention(order, `Cliente de riesgo: ${history.message}`);
-    if (addressCheck.level !== 'completa') await bot.logEvent(order, 'direccion_por_revisar', addressCheck.issues.map((i) => i.message).join(' '));
-    await bot.startConfirmation(order);
-    return { id: order.id, code, possibleDuplicateOf: duplicate.rows[0]?.code ?? null, addressLevel: addressCheck.level, customerRisk: history.risk };
+    const pre = await inspectOrder(req.ctx, b);
+    if (pre.errors.length) throw new HttpError(pre.errorCode === 'cliente_bloqueado' ? 409 : 400, pre.errorCode, pre.errors.join(' '));
+    return createOrder(req.ctx, b, pre, 'manual');
   });
 
   app.get('/api/hermes/orders/:id', guard(), async (req) => {
@@ -231,6 +319,95 @@ export function hermesRoutes(app: FastifyInstance): void {
     const o = await loadOrder(req.ctx, inc.order_id);
     await db.query(`UPDATE hermes_orders SET attention = false, attention_reason = '', awaiting = NULL, updated_at = now() WHERE id = $1`, [o.id]);
     await bot.logEvent(o, 'novedad_gestionada', b.resolution, req.ctx.name);
+    return { ok: true };
+  });
+
+  // ───────── Importación en lote ─────────
+  /**
+   * Vista previa: revisa cada fila con las mismas reglas que el formulario (dirección, teléfono, bloqueados,
+   * historial, duplicados) y dice cuáles se pueden crear. No crea nada.
+   */
+  async function inspectRows(ctx: Ctx, rows: z.infer<typeof importRow>[]) {
+    const sellers = (await db.query(`SELECT id, name, email FROM core_users WHERE company_id = $1 AND status = 'active'`, [ctx.companyId])).rows;
+    const seen = new Map<string, number>();
+    const out = [];
+    for (const [index, row] of rows.entries()) {
+      const r = await rowToOrder(ctx, row, sellers);
+      const phone = r.pre?.phone ?? bot.normalizePhone(row.phone);
+      // El mismo teléfono dos veces en el archivo.
+      if (phone.length >= 10) {
+        if (seen.has(phone)) r.warnings.push(`El teléfono se repite en la fila ${seen.get(phone)! + 1} de este archivo.`);
+        else seen.set(phone, index);
+      }
+      out.push({ index, ok: r.errors.length === 0, errors: r.errors, warnings: r.warnings, order: r.order, pre: r.pre, customerName: row.customerName, phone, city: r.pre?.addressCheck.city?.name ?? row.city, address: r.pre?.fullAddress ?? row.address });
+    }
+    return out;
+  }
+
+  app.post('/api/hermes/import/preview', guard('admin', 'supervisor'), async (req) => {
+    const b = parse(importBody, req.body);
+    const rows = await inspectRows(req.ctx, b.rows);
+    return { total: rows.length, valid: rows.filter((r) => r.ok).length, rows: rows.map(({ order: _o, pre: _p, ...r }) => r) };
+  });
+
+  /** Crea los pedidos válidos del lote. Las filas con errores se omiten y se devuelven para corregirlas. */
+  app.post('/api/hermes/import', guard('admin', 'supervisor'), async (req) => {
+    const b = parse(importBody, req.body);
+    const rows = await inspectRows(req.ctx, b.rows);
+    const created: { index: number; code: string }[] = [];
+    const skipped: { index: number; customerName: string; errors: string[] }[] = [];
+    for (const r of rows) {
+      if (!r.ok || !r.order) {
+        skipped.push({ index: r.index, customerName: r.customerName, errors: r.errors });
+        continue;
+      }
+      // Se vuelve a revisar justo antes de crear: una fila anterior del mismo lote puede haber abierto un pedido para ese teléfono.
+      const pre = await inspectOrder(req.ctx, r.order);
+      if (pre.errors.length) {
+        skipped.push({ index: r.index, customerName: r.customerName, errors: pre.errors });
+        continue;
+      }
+      const res = await createOrder(req.ctx, r.order, pre, 'importacion');
+      created.push({ index: r.index, code: res.code });
+    }
+    await auditBy(req.ctx, { action: 'hermes.importacion', entityType: 'empresa', entityId: req.ctx.companyId, summary: `Importó ${created.length} pedidos (${skipped.length} omitidos)`, metadata: { creados: created.length, omitidos: skipped.length } });
+    return { created, skipped };
+  });
+
+  // ───────── Clientes bloqueados ─────────
+  app.get('/api/hermes/blocked', guard('admin', 'supervisor'), async (req) => {
+    const { rows } = await db.query(
+      `SELECT b.phone, b.name, b.reason, b.created_at AS "createdAt", u.name AS "createdByName",
+              (SELECT count(*)::int FROM hermes_orders o WHERE o.company_id = b.company_id AND o.phone = b.phone) AS orders,
+              (SELECT count(*)::int FROM hermes_orders o WHERE o.company_id = b.company_id AND o.phone = b.phone AND o.status = 'entregado') AS delivered,
+              (SELECT count(*)::int FROM hermes_orders o WHERE o.company_id = b.company_id AND o.phone = b.phone AND o.status = 'devuelto') AS returned
+         FROM hermes_blocked b LEFT JOIN core_users u ON u.id = b.created_by
+        WHERE b.company_id = $1 ORDER BY b.created_at DESC`,
+      [req.ctx.companyId],
+    );
+    return { blocked: rows };
+  });
+
+  app.post('/api/hermes/blocked', guard('admin', 'supervisor'), async (req) => {
+    const b = parse(z.object({ phone: z.string().trim().min(7).max(25), reason: z.string().trim().min(3).max(200), name: z.string().trim().max(120).default('') }), req.body);
+    const phone = bot.normalizePhone(b.phone);
+    if (phone.length < 10) throw badRequest('El teléfono no parece válido.');
+    // Si no se indicó nombre, se toma del último pedido de ese número.
+    const known = b.name || (await db.query(`SELECT customer_name FROM hermes_orders WHERE company_id = $1 AND phone = $2 ORDER BY created_at DESC LIMIT 1`, [req.ctx.companyId, phone])).rows[0]?.customer_name || '';
+    await db.query(
+      `INSERT INTO hermes_blocked (company_id, phone, name, reason, created_by) VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (company_id, phone) DO UPDATE SET reason = EXCLUDED.reason, name = EXCLUDED.name`,
+      [req.ctx.companyId, phone, known, b.reason, req.ctx.userId],
+    );
+    await auditBy(req.ctx, { action: 'hermes.cliente_bloqueado', entityType: 'cliente', entityId: phone, summary: `Bloqueó al cliente ${known || phone}: ${b.reason}` });
+    return { ok: true, phone };
+  });
+
+  app.delete('/api/hermes/blocked/:phone', guard('admin', 'supervisor'), async (req) => {
+    const { phone } = parse(z.object({ phone: z.string().regex(/^\d{10,15}$/) }), req.params);
+    const { count } = await db.query(`DELETE FROM hermes_blocked WHERE company_id = $1 AND phone = $2`, [req.ctx.companyId, phone]);
+    if (!count) throw notFound('Ese número no está bloqueado.');
+    await auditBy(req.ctx, { action: 'hermes.cliente_desbloqueado', entityType: 'cliente', entityId: phone, summary: `Desbloqueó al cliente ${phone}` });
     return { ok: true };
   });
 

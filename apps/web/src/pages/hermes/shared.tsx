@@ -235,6 +235,7 @@ export interface Validation {
   address: { level: 'completa' | 'revisar' | 'incompleta'; issues: { code: string; message: string; severity: string }[]; normalizedAddress: string; city: { name: string; department: string } | null } | null;
   contact?: { code: string; message: string; severity: string }[];
   history?: { risk: 'alto' | 'medio' | 'bueno' | 'nuevo'; message: string } | null;
+  blocked?: { reason: string } | null;
 }
 const LEVEL: Record<string, { label: string; tone: string }> = {
   completa: { label: 'Dirección completa', tone: 'ok' },
@@ -246,7 +247,7 @@ const RISK_LABEL: Record<string, string> = { alto: 'Riesgo alto de devolución',
 
 /** Resultado del validador de datos de entrega: qué falta en la dirección y cómo le ha ido a este cliente antes. */
 export function ValidationBox({ value, compact }: { value: Validation | null; compact?: boolean }) {
-  if (!value || (!value.address && !value.contact?.length && !value.history)) return null;
+  if (!value || (!value.address && !value.contact?.length && !value.history && !value.blocked)) return null;
   const issues = [...(value.contact ?? []), ...(value.address?.issues ?? [])];
   return (
     <div className="check-box" role="status">
@@ -255,6 +256,7 @@ export function ValidationBox({ value, compact }: { value: Validation | null; co
         {value.address?.city && <span className="xs muted">{value.address.city.name}, {value.address.city.department}</span>}
         {value.history && <Badge tone={RISK_TONE[value.history.risk]}>{RISK_LABEL[value.history.risk]}</Badge>}
       </div>
+      {value.blocked && <p className="is-error" style={{ color: 'var(--color-danger)', fontWeight: 600 }}>Cliente bloqueado: {value.blocked.reason}. No se le pueden crear pedidos.</p>}
       {issues.length > 0 && (
         <ul>
           {issues.map((i) => <li key={i.code} className={i.severity === 'error' ? 'is-error' : ''}>{i.message}</li>)}

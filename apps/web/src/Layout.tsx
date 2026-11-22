@@ -64,6 +64,7 @@ const NAV: Record<string, Group[]> = {
         { label: 'Pedidos', icon: 'box', to: '/hermes/pedidos' },
         { label: 'Novedades de entrega', icon: 'alert', to: '/hermes/novedades', roles: ['admin', 'supervisor'] },
         { label: 'Panel de entregas', icon: 'chart', to: '/hermes/panel', roles: ['admin', 'supervisor'] },
+        { label: 'Clientes bloqueados', icon: 'shield', to: '/hermes/bloqueados', roles: ['admin', 'supervisor'] },
       ],
     },
   ],

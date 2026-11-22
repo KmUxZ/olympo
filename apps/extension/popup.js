@@ -169,6 +169,7 @@ function showValidation(box, v) {
   const LEVEL = { completa: ['ok', 'Dirección completa'], revisar: ['warn', 'Dirección por revisar'], incompleta: ['danger', 'Dirección incompleta'] };
   const RISK = { alto: ['danger', 'Riesgo alto de devolución'], medio: ['warn', 'Historial mixto'], bueno: ['ok', 'Cliente cumplido'] };
   const parts = [];
+  if (v?.blocked) parts.push(h('div', { class: 'note danger' }, h('strong', {}, 'Cliente bloqueado'), `. ${v.blocked.reason}. No se le pueden crear pedidos.`));
   if (v?.address) parts.push(h('div', { class: `note ${LEVEL[v.address.level][0]}` }, h('strong', {}, LEVEL[v.address.level][1]), v.address.city ? ` · ${v.address.city.name}, ${v.address.city.department}` : ''));
   const issues = [...(v?.contact ?? []), ...(v?.address?.issues ?? [])];
   if (issues.length) parts.push(h('ul', { class: 'small', style: 'margin:0;padding-left:18px' }, issues.map((i) => h('li', {}, i.message))));
