@@ -392,6 +392,8 @@ td.is-today .heat-cell { box-shadow: 0 0 0 2px var(--brand-obsidian); }
 .rate-track i.danger { background: var(--state-sin-senal); }
 
 /* ───── Selector de producto: cada herramienta del ecosistema tiene su marca, su color y su menú ───── */
+.shell[data-product="athena"] { --color-accent: var(--brand-violet); --color-sidebar-active: #efeaff; --color-sidebar-active-text: #4a2fd0; }
+.hero.athena { background: radial-gradient(60% 130% at 95% -10%, rgb(109 74 255 / 60%), transparent 62%), radial-gradient(45% 110% at 0% 120%, rgb(109 74 255 / 28%), transparent 60%), var(--brand-obsidian); }
 .shell[data-product="hermes"] { --color-accent: var(--brand-blue); --color-sidebar-active: #e9efff; --color-sidebar-active-text: #2449c4; }
 .switcher { position: relative; }
 button.brand { width: 100%; justify-content: space-between; gap: 8px; background: none; border: 0; border-bottom: 1px solid var(--color-sidebar-border); cursor: pointer; font: inherit; text-align: left; transition: background 0.15s; }
@@ -480,3 +482,7 @@ a.switcher-item:hover { background: var(--color-surface-alt); }
 .steps.compact li { padding-top: 6px; }
 @media (max-width: 1180px) { .inbox { grid-template-columns: 300px minmax(0, 1fr); } .inbox-context { display: none; } }
 @media (max-width: 760px) { .inbox { grid-template-columns: 1fr; height: auto; } .inbox-list { border-right: 0; max-height: 300px; } }
+
+/* Casilla con su texto en una línea */
+.check { display: flex; align-items: flex-start; gap: 8px; font-size: var(--text-sm); }
+.check input { margin-top: 3px; flex: none; }

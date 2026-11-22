@@ -20,6 +20,7 @@ import { coachingRoutes } from './argos/coaching.routes.ts';
 import { qualityRoutes } from './argos/quality.routes.ts';
 import { notificationRoutes } from './argos/notifications.routes.ts';
 import { hermesRoutes } from './hermes/routes.ts';
+import { athenaRoutes } from './athena/routes.ts';
 import { startJobs } from './argos/jobs.ts';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' }, bodyLimit: 1_048_576 });
@@ -52,6 +53,7 @@ coachingRoutes(app);
 qualityRoutes(app);
 notificationRoutes(app);
 hermesRoutes(app);
+athenaRoutes(app);
 
 // En producción el servidor entrega también la plataforma web ya compilada.
 if (existsSync(config.webDist)) {

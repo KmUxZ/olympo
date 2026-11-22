@@ -27,6 +27,9 @@ import { HermesChats } from './pages/hermes/Chats';
 import { HermesBlocked } from './pages/hermes/Blocked';
 import { HermesIncidents } from './pages/hermes/Incidents';
 import { HermesPanel } from './pages/hermes/Panel';
+import { AthenaChats } from './pages/athena/Chats';
+import { AthenaCatalog } from './pages/athena/Catalog';
+import { AthenaSettings } from './pages/athena/Settings';
 import '@fontsource-variable/montserrat/wght.css';
 import './styles/base.css';
 
@@ -43,7 +46,7 @@ function App() {
   if (me.user.mustChangePassword) return <ChangePassword forced />;
   // Cada empresa ve solo los productos que tiene contratados.
   const has = (p: string) => me.company.products.includes(p);
-  const home = !has('argos') && has('hermes') ? '/hermes/pedidos' : me.user.role === 'seller' ? '/mi-turno' : '/dashboard';
+  const home = has('argos') ? (me.user.role === 'seller' ? '/mi-turno' : '/dashboard') : has('hermes') ? '/hermes/pedidos' : has('athena') && me.user.role !== 'seller' ? '/athena/conversaciones' : '/usuarios';
   return (
     <Routes>
       <Route element={<Layout />}>
@@ -71,6 +74,13 @@ function App() {
             <Route path="/hermes/novedades" element={<Only roles={['admin', 'supervisor']}><HermesIncidents /></Only>} />
             <Route path="/hermes/bloqueados" element={<Only roles={['admin', 'supervisor']}><HermesBlocked /></Only>} />
             <Route path="/hermes/panel" element={<Only roles={['admin', 'supervisor']}><HermesPanel /></Only>} />
+          </>
+        )}
+        {has('athena') && (
+          <>
+            <Route path="/athena/conversaciones" element={<Only roles={['admin', 'supervisor']}><AthenaChats /></Only>} />
+            <Route path="/athena/catalogo" element={<Only roles={['admin', 'supervisor']}><AthenaCatalog /></Only>} />
+            <Route path="/athena/ajustes" element={<Only roles={['admin', 'supervisor']}><AthenaSettings /></Only>} />
           </>
         )}
         <Route path="/usuarios" element={<Only roles={['admin']}><Users /></Only>} />

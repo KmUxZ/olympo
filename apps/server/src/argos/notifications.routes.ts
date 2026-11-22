@@ -50,6 +50,8 @@ export function notificationRoutes(app: FastifyInstance): void {
     // Para la vendedora lo pendiente son las correcciones que le pidieron, no la atención de logística.
     const hermes = await db.query(`SELECT count(*)::int AS n FROM hermes_orders WHERE company_id = $1 AND ${ctx.role === 'seller' ? 'correction_requested_at IS NOT NULL' : 'attention'} ${hScope}`, hParams);
 
-    return { hermesAttention: hermes.rows[0].n, openAlerts, recentAlerts, unreadMessages: unread.rows[0].n, pendingToday: tasks.rows[0].n };
+    const athena = ctx.role === 'seller' ? 0 : (await db.query(`SELECT count(*)::int AS n FROM athena_conversations WHERE company_id = $1 AND attention AND NOT is_test`, [ctx.companyId])).rows[0].n;
+
+    return { athenaAttention: athena, hermesAttention: hermes.rows[0].n, openAlerts, recentAlerts, unreadMessages: unread.rows[0].n, pendingToday: tasks.rows[0].n };
   });
 }

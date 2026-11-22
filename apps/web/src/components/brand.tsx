@@ -60,10 +60,20 @@ export function HermesMark({ size = 28 }: { size?: number }) {
   );
 }
 
+/** Marca provisional de Athena: un escudo con una chispa, hasta tener el logo oficial. */
+export function AthenaMark({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z" fill="var(--brand-violet)" />
+      <path d="M12 6.5 13.4 10.6 17.5 12 13.4 13.4 12 17.5 10.6 13.4 6.5 12 10.6 10.6z" fill="#fff" />
+    </svg>
+  );
+}
+
 /** Catálogo de productos del ecosistema: nombre, lema, marca y a dónde lleva cada uno. */
 export const PRODUCT_INFO: Record<string, { name: string; tagline: string; home: string; available: boolean; Mark: (p: { size?: number }) => React.JSX.Element }> = {
   argos: { name: 'Argos', tagline: 'Equipo', home: '/', available: true, Mark: ArgosMark },
   hermes: { name: 'Hermes', tagline: 'Logística', home: '/hermes/pedidos', available: true, Mark: HermesMark },
   zeus: { name: 'Zeus', tagline: 'CRM', home: '/', available: false, Mark: ({ size }) => <OlympoMark size={size} /> },
-  athena: { name: 'Athena', tagline: 'Chatbot IA', home: '/', available: false, Mark: ({ size }) => <OlympoMark size={size} /> },
+  athena: { name: 'Athena', tagline: 'Vendedora IA', home: '/athena/conversaciones', available: true, Mark: AthenaMark },
 };

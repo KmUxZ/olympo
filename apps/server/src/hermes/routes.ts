@@ -73,7 +73,12 @@ async function loadOrder(ctx: Ctx, id: string): Promise<bot.Order> {
 }
 
 
-type OrderInput = z.infer<typeof orderBody>;
+export type OrderInput = z.input<typeof orderBody>;
+type OrderData = z.infer<typeof orderBody>;
+/** Quién crea el pedido: una persona con sesión o un sistema (Athena), que no tiene usuario. */
+export interface OrderActor { companyId: string; role: string; userId: string | null; name: string }
+/** Valida los datos de un pedido que llega de otro módulo. */
+export const parseOrder = (raw: unknown) => orderBody.safeParse(raw);
 
 async function blockedInfo(companyId: string, phone: string): Promise<{ reason: string } | null> {
   const { rows } = await db.query(`SELECT reason FROM hermes_blocked WHERE company_id = $1 AND phone = $2`, [companyId, phone]);
@@ -84,7 +89,7 @@ async function blockedInfo(companyId: string, phone: string): Promise<{ reason: 
  * Revisa un pedido antes de crearlo: teléfono, dirección, cliente bloqueado, historial y duplicados.
  * `errors` impiden crearlo; `warnings` solo informan. Lo usan el formulario y la importación en lote.
  */
-async function inspectOrder(ctx: Ctx, b: OrderInput) {
+export async function inspectOrder(ctx: OrderActor, b: OrderData) {
   const phone = bot.normalizePhone(b.phone);
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -117,7 +122,7 @@ async function inspectOrder(ctx: Ctx, b: OrderInput) {
   return { phone, fullAddress, addressCheck, history, duplicateOf: (dup?.code as string | undefined) ?? null, errors, warnings, errorCode };
 }
 
-async function createOrder(ctx: Ctx, b: OrderInput, pre: Awaited<ReturnType<typeof inspectOrder>>, source: string) {
+export async function createOrder(ctx: OrderActor, b: OrderData, pre: Awaited<ReturnType<typeof inspectOrder>>, source: string) {
   const sellerId = ctx.role === 'seller' ? ctx.userId : (b.sellerUserId ?? null);
   if (sellerId && sellerId !== ctx.userId) {
     const ok = await db.query(`SELECT 1 FROM core_users WHERE id = $1 AND company_id = $2`, [sellerId, ctx.companyId]);
