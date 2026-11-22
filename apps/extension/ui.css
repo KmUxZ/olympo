@@ -21,6 +21,8 @@
 * { box-sizing: border-box; }
 body { margin: 0; font: 14px/1.45 var(--font); color: var(--text); background: var(--bg); }
 body.popup { width: 340px; }
+/* En el panel lateral ocupa el ancho disponible. */
+body.popup.side { width: auto; min-width: 300px; }
 body.page { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; }
 h1 { font-size: 22px; margin: 0 0 8px; }
 h2 { font-size: 16px; margin: 28px 0 8px; }

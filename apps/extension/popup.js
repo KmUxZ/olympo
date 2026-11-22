@@ -10,6 +10,35 @@ let ui = { busy: false, error: '', notice: '', panel: null }; // panel: 'pause' 
 // Borrador del pedido: se guarda aparte para que no se pierda lo escrito si la ventana se vuelve a pintar.
 const EMPTY_ORDER = { customerName: '', phone: '', city: '', address: '', notes: '', product: '', qty: '1', price: '', payment: 'contraentrega' };
 let draft = { ...EMPTY_ORDER };
+// La ventanita de la extensión se cierra en cuanto se hace clic fuera (por ejemplo, para copiar un dato del chat).
+// Por eso: (1) el borrador se guarda en cada tecla y se recupera al volver a abrir, y
+// (2) «Nuevo pedido» se abre en el panel lateral de Chrome, que sí permanece abierto junto al chat.
+const SIDE = new URLSearchParams(location.search).has('side');
+if (SIDE) document.body.classList.add('side');
+const saveDraft = () => chrome.storage.local.set({ orderDraft: draft }).catch(() => {});
+const clearDraft = () => {
+  draft = { ...EMPTY_ORDER };
+  chrome.storage.local.remove('orderDraft').catch(() => {});
+};
+let currentWindowId = null;
+chrome.windows.getCurrent().then((w) => (currentWindowId = w.id)).catch(() => {});
+const hasDraft = () => Object.keys(EMPTY_ORDER).some((k) => draft[k] !== EMPTY_ORDER[k]);
+
+/** Abre el formulario de pedido en el panel lateral. Si el navegador no lo permite, lo muestra aquí mismo. */
+async function openOrder() {
+  if (!SIDE && chrome.sidePanel?.open && currentWindowId !== null) {
+    try {
+      // El identificador de la ventana se obtiene al cargar: Chrome exige abrir el panel en el mismo clic, sin esperas previas.
+      await chrome.sidePanel.open({ windowId: currentWindowId });
+      window.close();
+      return;
+    } catch {
+      /* se muestra dentro de esta ventana */
+    }
+  }
+  ui.panel = 'order';
+  render();
+}
 let data = { auth: null, state: null };
 
 function h(tag, props = {}, ...children) {
@@ -41,7 +70,11 @@ async function send(message, { keepPanel = false } = {}) {
   ui.busy = false;
   if (!res?.ok) ui.error = res?.message ?? 'Ocurrió un error.';
   else if (!keepPanel) ui.panel = null;
-  await load();
+  // Recupera el borrador que hubiera quedado a medias.
+const stored = (await chrome.storage.local.get('orderDraft')).orderDraft;
+if (stored) draft = { ...EMPTY_ORDER, ...stored };
+if (SIDE) ui.panel = 'order';
+await load();
   return Boolean(res?.ok);
 }
 
@@ -133,12 +166,18 @@ function consentCard(state) {
 function orderForm() {
   const field = (key, label, attrs = {}) => {
     const input = h('input', { value: draft[key], ...attrs });
-    input.addEventListener('input', () => (draft[key] = input.value));
+    input.addEventListener('input', () => {
+      draft[key] = input.value;
+      saveDraft();
+    });
     return h('label', {}, label, input);
   };
   const payment = h('select', {}, h('option', { value: 'contraentrega' }, 'Contraentrega'), h('option', { value: 'pagado' }, 'Ya pagado'));
   payment.value = draft.payment;
-  payment.addEventListener('change', () => (draft.payment = payment.value));
+  payment.addEventListener('change', () => {
+    draft.payment = payment.value;
+    saveDraft();
+  });
   const submit = async () => {
     const qty = Math.max(1, Math.round(Number(draft.qty) || 1));
     const price = Math.max(0, Math.round(Number(draft.price) || 0));
@@ -158,8 +197,8 @@ function orderForm() {
     ui.busy = false;
     if (!res?.ok) ui.error = res?.message ?? 'No se pudo crear el pedido.';
     else {
-      draft = { ...EMPTY_ORDER };
-      ui.panel = null;
+      clearDraft();
+      ui.panel = SIDE ? 'order' : null; // en el panel lateral queda listo para el siguiente pedido
       ui.notice = `Pedido ${res.result.code} creado. Hermes ya le pidió la confirmación al cliente.${res.result.possibleDuplicateOf ? ` Ojo: ese número ya tenía abierto el pedido ${res.result.possibleDuplicateOf}.` : ''}`;
     }
     render();
@@ -175,7 +214,7 @@ function orderForm() {
     field('notes', 'Indicaciones (opcional)', { autocomplete: 'off' }),
     field('product', 'Producto', { autocomplete: 'off' }),
     h('div', { class: 'row' }, field('qty', 'Cantidad', { type: 'number', min: '1' }), field('price', 'Precio unitario', { type: 'number', min: '0', placeholder: '0' })),
-    h('div', { class: 'row' }, h('button', { onclick: () => ((ui.panel = null), (ui.error = ''), render()) }, 'Volver'), h('button', { class: 'primary', disabled: ui.busy, onclick: submit }, ui.busy ? 'Creando…' : 'Crear pedido')),
+    h('div', { class: 'row' }, h('button', { onclick: () => ((ui.panel = null), (ui.error = ''), render()) }, 'Volver'), hasDraft() ? h('button', { onclick: () => (clearDraft(), render()) }, 'Limpiar') : null, h('button', { class: 'primary', disabled: ui.busy, onclick: submit }, ui.busy ? 'Creando…' : 'Crear pedido')),
     h('span', { class: 'small muted' }, 'Queda a tu nombre. Si lleva varios productos, créalo desde la plataforma web.'),
   );
 }
@@ -198,7 +237,7 @@ function idleView(state) {
     consent,
     perm,
     h('button', { class: 'primary', disabled: ui.busy || Boolean(consent) || (Boolean(state.tools?.length) && !state.permissionsOk), onclick: () => send({ type: 'startShift' }) }, 'Iniciar turno'),
-    h('button', { disabled: ui.busy, onclick: () => ((ui.panel = 'order'), render()) }, 'Nuevo pedido'),
+    h('button', { disabled: ui.busy, onclick: () => void openOrder() }, hasDraft() ? 'Continuar pedido' : 'Nuevo pedido'),
     summary
       ? h(
           'div',
@@ -281,7 +320,7 @@ function shiftView(state) {
     );
   } else {
     out.push(
-      h('button', { class: 'primary', disabled: ui.busy, onclick: () => ((ui.panel = 'order'), render()) }, 'Nuevo pedido'),
+      h('button', { class: 'primary', disabled: ui.busy, onclick: () => void openOrder() }, hasDraft() ? 'Continuar pedido' : 'Nuevo pedido'),
       h(
         'div',
         { class: 'row' },
