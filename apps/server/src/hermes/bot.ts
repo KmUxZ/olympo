@@ -225,6 +225,8 @@ const NO = /^(no|cancelar|cancela|cancelo|ya no|no lo quiero)\b/i;
 export async function handleInbound(companyId: string, rawPhone: string, input: { text?: string; payload?: string }): Promise<{ orderId: string | null }> {
   const phone = normalizePhone(rawPhone);
   const text = (input.text ?? '').trim();
+  // Lo que el cliente escribió a mano. Si pulsó un botón, `text` es solo la etiqueta del botón y no cuenta como texto libre.
+  const typed = input.payload ? '' : text;
   const { rows } = await db.query(
     `SELECT * FROM hermes_orders WHERE company_id = $1 AND phone = $2 ORDER BY (status IN ('entregado', 'devuelto', 'cancelado')), created_at DESC LIMIT 1`,
     [companyId, phone],
@@ -237,7 +239,7 @@ export async function handleInbound(companyId: string, rawPhone: string, input: 
   if (!o) return { orderId: null };
 
   let intent = input.payload ?? '';
-  if (!intent && (o.awaiting === 'confirmacion')) intent = YES.test(text) ? 'CONFIRMAR' : NO.test(text) ? 'CANCELAR' : '';
+  if (!intent && (o.awaiting === 'confirmacion')) intent = YES.test(typed) ? 'CONFIRMAR' : NO.test(typed) ? 'CANCELAR' : '';
 
   if (o.awaiting === 'confirmacion' && o.status === 'por_confirmar') {
     if (intent === 'CONFIRMAR') await confirm(o);
@@ -246,9 +248,9 @@ export async function handleInbound(companyId: string, rawPhone: string, input: 
       await patch(o, { awaiting: 'direccion' });
       await send(o, MESSAGES.pedir_direccion());
     } else await toHuman(o, 'El cliente respondió algo que el bot no entiende');
-  } else if (o.awaiting === 'direccion' && text) {
+  } else if (o.awaiting === 'direccion' && typed) {
     await logEvent(o, 'direccion_corregida', `Antes: ${o.address}, ${o.city}`, 'Cliente');
-    await patch(o, { address: text, awaiting: 'confirmacion' });
+    await patch(o, { address: typed, awaiting: 'confirmacion' });
     await send(o, MESSAGES.datos_actualizados(o));
   } else if (o.awaiting === 'novedad') {
     const incident = await openIncident(o);
@@ -266,10 +268,10 @@ export async function handleInbound(companyId: string, rawPhone: string, input: 
       await setAttention(o, 'El cliente dice que ya no quiere el pedido');
       await send(o, MESSAGES.novedad_rechazo());
     } else await toHuman(o, 'El cliente respondió a la novedad con un mensaje libre');
-  } else if (o.awaiting === 'direccion_novedad' && text) {
+  } else if (o.awaiting === 'direccion_novedad' && typed) {
     const incident = await openIncident(o);
     await logEvent(o, 'direccion_corregida', `Antes: ${o.address}, ${o.city}`, 'Cliente');
-    await patch(o, { address: text, awaiting: null });
+    await patch(o, { address: typed, awaiting: null });
     if (incident) await db.query(`UPDATE hermes_incidents SET customer_choice = 'corrige_direccion', status = 'por_gestionar' WHERE id = $1`, [incident.id]);
     await setAttention(o, 'El cliente corrigió la dirección: avisar a la transportadora');
     await send(o, MESSAGES.novedad_recibida());

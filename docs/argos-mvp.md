@@ -163,3 +163,29 @@ plataforma sobre una empresa (creación, suspensión, límites, restablecimiento
 
 La alarma «sin actividad observada» es un aviso para preguntar, no una falta: no se dispara durante una pausa, sin señal,
 ni cuando la persona tiene una novedad abierta que explica la inactividad.
+
+## 12. Hermes · logística (primera versión)
+
+Segundo producto del ecosistema. Vive en `apps/server/src/hermes/` y `apps/web/src/pages/hermes/`, con tablas `hermes_*`.
+
+**Recorrido de un pedido:** por confirmar → confirmado → despachado → en reparto → entregado, con las salidas
+novedad, devuelto y cancelado.
+
+**Qué hace el bot**
+- Pide la confirmación al cliente con botones (confirmar, corregir datos, cancelar) y entiende un «sí» o «no» escrito.
+- Si el cliente corrige la dirección, la actualiza, guarda la anterior en el historial y vuelve a pedir confirmación.
+- Envía recordatorios configurables y, si nadie responde, pasa el pedido a una persona.
+- Envía la guía al despachar y avisa el día del reparto con el valor a pagar.
+- Ante una novedad de la transportadora, le escribe al cliente con opciones (reprogramar, corregir dirección, ya no lo quiero)
+  y deja el caso en la bandeja con lo que respondió.
+- Lo que no entiende sin ambigüedad lo pasa a una persona; avisa al cliente una sola vez.
+- Detecta posibles duplicados (mismo teléfono con un pedido abierto).
+
+**Pantallas:** Pedidos (con la conversación de cada pedido y sus acciones), Novedades de entrega y Panel de entregas
+(embudo, tasa de entrega por vendedora, ciudad y transportadora, novedades por tipo).
+
+**Modo simulado.** Por defecto Hermes no envía nada: guarda los mensajes y permite simular las respuestas del cliente.
+El envío real se conecta en `bot.send()` (canal) cuando exista el número de logística y las plantillas aprobadas por Meta.
+
+**Pendiente:** conector de la transportadora (guías y estados automáticos), canal real de WhatsApp vía Pancake con su webhook
+de mensajes entrantes, y la entrada automática de pedidos desde Pancake.

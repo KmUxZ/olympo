@@ -17,9 +17,9 @@ export function PageHead({ title, subtitle, children }: { title: string; subtitl
 }
 
 /** Cabecera de pantalla con la identidad de Argos: título, acciones y hasta tres o cuatro indicadores clave. */
-export function PageHero({ title, subtitle, kpis = [], children }: { title: string; subtitle?: string; kpis?: { label: string; value: ReactNode }[]; children?: ReactNode }) {
+export function PageHero({ title, subtitle, kpis = [], children, tone }: { title: string; subtitle?: string; kpis?: { label: string; value: ReactNode }[]; children?: ReactNode; /** color del producto: Hermes usa el azul */ tone?: 'hermes' }) {
   return (
-    <section className="hero compact" aria-label={title}>
+    <section className={`hero compact ${tone ?? ''}`} aria-label={title}>
       <div className="hero-main">
         <h1>{title}</h1>
         {subtitle && <p>{subtitle}</p>}

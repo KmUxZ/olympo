@@ -22,6 +22,9 @@ import { Agenda } from './pages/Agenda';
 import { Messages } from './pages/Messages';
 import { Coaching } from './pages/Coaching';
 import { Quality } from './pages/Quality';
+import { HermesOrders } from './pages/hermes/Orders';
+import { HermesIncidents } from './pages/hermes/Incidents';
+import { HermesPanel } from './pages/hermes/Panel';
 import '@fontsource-variable/montserrat/wght.css';
 import './styles/base.css';
 
@@ -48,6 +51,9 @@ function App() {
         <Route path="/usuarios" element={<Only roles={['admin']}><Users /></Only>} />
         <Route path="/auditoria" element={<Only roles={['admin']}><Audit /></Only>} />
         <Route path="/configuracion" element={<Only roles={['admin']}><Settings /></Only>} />
+        <Route path="/hermes/pedidos" element={<HermesOrders />} />
+        <Route path="/hermes/novedades" element={<Only roles={['admin', 'supervisor']}><HermesIncidents /></Only>} />
+        <Route path="/hermes/panel" element={<Only roles={['admin', 'supervisor']}><HermesPanel /></Only>} />
         <Route path="/agenda" element={<Agenda />} />
         <Route path="/mensajes" element={<Messages />} />
         <Route path="/acompanamiento" element={<Coaching />} />

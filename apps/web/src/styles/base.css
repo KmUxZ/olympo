@@ -357,3 +357,36 @@ td.is-today .heat-cell { box-shadow: 0 0 0 2px var(--brand-obsidian); }
 .heat-avg { font-size: var(--text-sm) !important; font-weight: 700; padding-left: var(--space-3) !important; font-variant-numeric: tabular-nums; }
 .heat-legend .heat-cell { width: 16px; height: 14px; border-radius: 4px; animation: none; border: 0; }
 .heat-legend .heat-cell:hover { transform: none; box-shadow: none; }
+
+/* ───── Hermes ───── */
+.hero.hermes { background: radial-gradient(60% 130% at 95% -10%, rgb(56 107 255 / 60%), transparent 62%), radial-gradient(45% 110% at 0% 120%, rgb(56 107 255 / 28%), transparent 60%), var(--brand-obsidian); }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; counter-reset: step; }
+.steps li { flex: 1; position: relative; padding-top: 14px; font-size: var(--text-xs); color: var(--color-text-muted); text-align: center; }
+.steps li::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 6px; border-radius: 99px; background: var(--color-neutral-bg); }
+.steps li.done::before { background: var(--brand-blue); }
+.steps li.current::before { background: linear-gradient(90deg, var(--brand-blue), #7da0ff); }
+.steps li.done, .steps li.current { color: var(--color-text); font-weight: 600; }
+.steps li.current.problem::before { background: var(--state-sin-senal); }
+.chat-card { display: flex; flex-direction: column; min-height: 420px; }
+.chat { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: var(--space-3) var(--space-4); max-height: 440px; overflow-y: auto; background: var(--color-surface-alt); }
+.bubble { max-width: 86%; padding: 8px 12px; border-radius: 14px; font-size: var(--text-sm); line-height: 1.4; animation: rise 0.3s var(--ease) both; }
+.bubble.out { align-self: flex-end; background: var(--brand-obsidian); color: #fff; border-bottom-right-radius: 4px; }
+.bubble.in { align-self: flex-start; background: var(--color-surface); border: 1px solid var(--color-border); border-bottom-left-radius: 4px; }
+.bubble-meta { font-size: 0.6875rem; opacity: 0.7; margin-bottom: 2px; }
+.bubble-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.bubble-buttons span { font-size: var(--text-xs); padding: 3px 10px; border-radius: 99px; border: 1px solid rgb(255 255 255 / 35%); }
+.chat-form { display: flex; gap: 8px; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--color-border); }
+.chat-form input { flex: 1; }
+.sim { padding: var(--space-3); border-top: 1px dashed var(--color-border-strong); background: var(--color-warn-bg); display: grid; gap: 8px; border-radius: 0 0 var(--radius-md) var(--radius-md); }
+.sim .chat-form { padding: 0; border: 0; }
+.funnel { padding: var(--space-4); display: grid; gap: var(--space-3); }
+.funnel-row { display: grid; grid-template-columns: 130px 1fr 44px 48px; align-items: center; gap: var(--space-3); font-size: var(--text-sm); }
+.funnel-row strong { text-align: right; font-variant-numeric: tabular-nums; }
+.funnel-track { height: 22px; border-radius: 6px; background: var(--color-surface-alt); overflow: hidden; }
+.funnel-track i { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--brand-blue), #7da0ff); transform-origin: left; animation: grow-x 0.7s var(--ease) both; }
+.rate { display: flex; align-items: center; gap: 8px; }
+.rate-track { flex: 1; height: 8px; border-radius: 99px; background: var(--color-surface-alt); overflow: hidden; min-width: 60px; }
+.rate-track i { display: block; height: 100%; border-radius: 99px; transform-origin: left; animation: grow-x 0.7s var(--ease) both; }
+.rate-track i.ok { background: var(--state-observada); }
+.rate-track i.warn { background: var(--state-pausa); }
+.rate-track i.danger { background: var(--state-sin-senal); }

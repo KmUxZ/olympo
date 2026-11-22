@@ -265,7 +265,13 @@ export function hermesRoutes(app: FastifyInstance): void {
     const settings = await bot.settingsOf(req.ctx.companyId);
     if (settings.driver !== 'simulado') throw forbidden('El simulador solo está disponible en modo simulado.');
     const o = await loadOrder(req.ctx, id);
-    await bot.handleInbound(req.ctx.companyId, o.phone, b);
+    // Al pulsar un botón, en la conversación se muestra su texto (como lo vería el cliente), no el código interno.
+    let text = b.text;
+    if (b.payload && !text) {
+      const last = await db.query(`SELECT buttons FROM hermes_messages WHERE order_id = $1 AND direction = 'out' AND jsonb_array_length(buttons) > 0 ORDER BY created_at DESC LIMIT 1`, [id]);
+      text = (last.rows[0]?.buttons as { label: string; payload: string }[] | undefined)?.find((x) => x.payload === b.payload)?.label;
+    }
+    await bot.handleInbound(req.ctx.companyId, o.phone, { text, payload: b.payload });
     return { ok: true };
   });
 

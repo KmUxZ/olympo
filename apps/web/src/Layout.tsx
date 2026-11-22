@@ -12,13 +12,14 @@ interface Item {
   icon: string;
   to?: string; // sin ruta = módulo previsto, aún no disponible
   roles?: Role[];
-  badge?: 'openAlerts' | 'unreadMessages' | 'pendingToday';
+  badge?: 'openAlerts' | 'unreadMessages' | 'pendingToday' | 'hermesAttention';
 }
 
 interface Counts {
   openAlerts: number;
   unreadMessages: number;
   pendingToday: number;
+  hermesAttention: number;
   recentAlerts: { id: string; message: string }[];
 }
 
@@ -42,6 +43,14 @@ const NAV: { group: string; items: Item[] }[] = [
       { label: 'Acompañamiento', icon: 'target', to: '/acompanamiento' },
       { label: 'Mensajes', icon: 'message', to: '/mensajes', badge: 'unreadMessages' },
       { label: 'Calidad', icon: 'star', to: '/calidad' },
+    ],
+  },
+  {
+    group: 'Hermes · Logística',
+    items: [
+      { label: 'Pedidos', icon: 'box', to: '/hermes/pedidos', badge: 'hermesAttention' },
+      { label: 'Novedades de entrega', icon: 'alert', to: '/hermes/novedades', roles: ['admin', 'supervisor'] },
+      { label: 'Panel de entregas', icon: 'chart', to: '/hermes/panel', roles: ['admin', 'supervisor'] },
     ],
   },
   {
