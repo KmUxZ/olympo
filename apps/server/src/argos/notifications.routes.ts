@@ -40,6 +40,15 @@ export function notificationRoutes(app: FastifyInstance): void {
       aParams,
     );
 
-    return { openAlerts, recentAlerts, unreadMessages: unread.rows[0].n, pendingToday: tasks.rows[0].n };
+    // Pedidos de Hermes que esperan a una persona.
+    const hParams: unknown[] = [ctx.companyId];
+    let hScope = '';
+    if (ctx.role === 'seller') {
+      hParams.push(ctx.userId);
+      hScope = ' AND seller_user_id = $2';
+    }
+    const hermes = await db.query(`SELECT count(*)::int AS n FROM hermes_orders WHERE company_id = $1 AND attention ${hScope}`, hParams);
+
+    return { hermesAttention: hermes.rows[0].n, openAlerts, recentAlerts, unreadMessages: unread.rows[0].n, pendingToday: tasks.rows[0].n };
   });
 }
