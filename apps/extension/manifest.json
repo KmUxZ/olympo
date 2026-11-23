@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Argos — Registro de turno (OLYMPO)",
   "short_name": "Argos",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Registra tu turno, pausas y actividad agregada en las herramientas de trabajo autorizadas. No guarda texto, teclas ni contraseñas.",
   "incognito": "not_allowed",
   "minimum_chrome_version": "120",

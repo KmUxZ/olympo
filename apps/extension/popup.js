@@ -89,7 +89,9 @@ function toolOrigins(tools) {
 
 // ───────── Vistas ─────────
 function loginView() {
-  const server = h('input', { name: 'serverUrl', value: data.auth?.serverUrl ?? DEFAULT_SERVER, autocomplete: 'off' });
+  // La extensión que se descarga desde la plataforma ya trae su servidor: el campo solo se muestra en desarrollo.
+  const devBuild = /\/\/(localhost|127\.0\.0\.1)/.test(DEFAULT_SERVER);
+  const server = h('input', { name: 'serverUrl', value: devBuild ? (data.auth?.serverUrl ?? DEFAULT_SERVER) : DEFAULT_SERVER, autocomplete: 'off' });
   const email = h('input', { name: 'email', type: 'email', required: true, autocomplete: 'username' });
   const password = h('input', { name: 'password', type: 'password', required: true, autocomplete: 'current-password' });
   return h(
@@ -99,7 +101,7 @@ function loginView() {
       style: 'display:grid;gap:12px',
       onsubmit: async (e) => {
         e.preventDefault();
-        const serverUrl = server.value.trim().replace(/\/+$/, '') || DEFAULT_SERVER;
+        const serverUrl = devBuild ? server.value.trim().replace(/\/+$/, '') || DEFAULT_SERVER : DEFAULT_SERVER;
         // Si el servidor no es el local por defecto, Chrome pide permiso para conectarse a él.
         try {
           const origin = `${new URL(serverUrl).origin}/*`;
@@ -116,7 +118,7 @@ function loginView() {
     h('p', { class: 'muted' }, 'Inicia sesión con tu cuenta de la plataforma.'),
     h('label', {}, 'Correo', email),
     h('label', {}, 'Contraseña', password),
-    h('details', {}, h('summary', {}, 'Servidor'), h('label', { style: 'margin-top:6px' }, 'Dirección del servidor', server)),
+    ...(devBuild ? [h('details', {}, h('summary', {}, 'Servidor'), h('label', { style: 'margin-top:6px' }, 'Dirección del servidor', server))] : []),
     h('button', { class: 'primary', type: 'submit', disabled: ui.busy }, ui.busy ? 'Entrando…' : 'Iniciar sesión'),
   );
 }
