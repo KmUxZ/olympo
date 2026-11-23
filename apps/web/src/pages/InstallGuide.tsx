@@ -6,7 +6,7 @@ import { useAuth } from '../auth';
 import { api } from '../lib/api';
 import { ArgosMark } from '../components/brand';
 
-interface Status { connected: boolean; version: string; serverUrl: string }
+interface Status { connected: boolean; lastSeenAt: string | null; version: string; serverUrl: string }
 
 /** Marco que imita una ventana, para que el dibujo se parezca a lo que la persona tiene delante. */
 function Win({ title, children }: { title: string; children: ReactNode }) {
@@ -90,6 +90,8 @@ export function InstallGuide({ gate = false, onDone }: { gate?: boolean; onDone?
   const [step, setStep] = useState(0);
   const [status, setStatus] = useState<Status | null>(null);
   const [copied, setCopied] = useState(false);
+  // Reinstalar: la sesión anterior de la extensión sigue viva aunque la hayan quitado de Chrome, así que se espera una señal más nueva.
+  const [againSince, setAgainSince] = useState<string | null | undefined>(undefined);
   const last = step === STEPS.length - 1;
 
   // Se consulta cada pocos segundos: cuando la persona inicia sesión en la extensión, la guía termina sola.
@@ -114,7 +116,8 @@ export function InstallGuide({ gate = false, onDone }: { gate?: boolean; onDone?
     }
   }
 
-  const connected = Boolean(status?.connected);
+  const again = againSince !== undefined && (status?.lastSeenAt ?? null) === againSince;
+  const connected = Boolean(status?.connected) && !again;
   return (
     <div className={`guide ${gate ? 'gate' : ''}`}>
       <header className="guide-head">
@@ -130,6 +133,7 @@ export function InstallGuide({ gate = false, onDone }: { gate?: boolean; onDone?
           <div className="guide-check" aria-hidden="true">✓</div>
           <p>La extensión ya está conectada con tu cuenta{me ? `, ${me.user.name.split(' ')[0]}` : ''}.</p>
           {onDone && <button className="btn primary lg" onClick={onDone}>Entrar a la plataforma</button>}
+          <button className="link" onClick={() => { setStep(0); setAgainSince(status?.lastSeenAt ?? null); }}>¿La quitaste o cambiaste de computador? Instalarla de nuevo</button>
         </div>
       ) : (
         <>
