@@ -26,7 +26,8 @@ export interface Tools {
 export interface BrainOutput { reply: string; mode: 'ia' | 'guion'; usage?: { input: number; output: number; cached: number } }
 
 /** La IA está disponible cuando el servidor tiene credenciales de Anthropic. */
-export const aiReady = (): boolean => Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+// Un valor provisional (por ejemplo "pendiente") no cuenta: las claves reales de Anthropic empiezan por "sk-ant-".
+export const aiReady = (): boolean => Boolean(process.env.ANTHROPIC_API_KEY?.startsWith('sk-ant-') || process.env.ANTHROPIC_AUTH_TOKEN);
 
 const money = (n: number) => `$${n.toLocaleString('es-CO')}`;
 
