@@ -54,6 +54,7 @@ const NAV: Record<string, Group[]> = {
         { label: 'Alarmas', icon: 'bell', to: '/alarmas', roles: ['admin', 'supervisor'], badge: 'openAlerts' },
         { label: 'Configuración', icon: 'settings', to: '/configuracion', roles: ['admin'] },
         { label: 'Qué se registra', icon: 'eye', to: '/que-se-registra' },
+        { label: 'Instalar extensión', icon: 'signal', to: '/instalar-extension' },
       ],
     },
   ],

@@ -1,4 +1,4 @@
-import { StrictMode } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth';
@@ -30,8 +30,36 @@ import { HermesPanel } from './pages/hermes/Panel';
 import { AthenaChats } from './pages/athena/Chats';
 import { AthenaCatalog } from './pages/athena/Catalog';
 import { AthenaSettings } from './pages/athena/Settings';
+import { InstallGuide } from './pages/InstallGuide';
+import { api } from './lib/api';
 import '@fontsource-variable/montserrat/wght.css';
 import './styles/base.css';
+
+/**
+ * Puerta de entrada de las vendedoras: sin la extensión conectada, Argos no puede registrar su turno,
+ * así que primero ven la guía de instalación. Se abre sola cuando la extensión inicia sesión.
+ */
+function ExtensionGate({ active, children }: { active: boolean; children: React.ReactNode }) {
+  const [state, setState] = useState<'checking' | 'needed' | 'open'>(active ? 'checking' : 'open');
+  useEffect(() => {
+    if (!active) return setState('open');
+    if (sessionStorage.getItem('argos.guia.omitida') === '1') return setState('open');
+    api<{ connected: boolean }>('GET', '/api/argos/extension/status').then((s) => setState(s.connected ? 'open' : 'needed')).catch(() => setState('open'));
+  }, [active]);
+  if (state === 'checking') return <Loading />;
+  if (state === 'needed') {
+    return (
+      <InstallGuide
+        gate
+        onDone={() => {
+          try { sessionStorage.setItem('argos.guia.omitida', '1'); } catch { /* sin almacenamiento: se entra igual */ }
+          setState('open');
+        }}
+      />
+    );
+  }
+  return <>{children}</>;
+}
 
 function Only({ roles, children }: { roles: Role[]; children: React.ReactNode }) {
   const { me } = useAuth();
@@ -48,6 +76,7 @@ function App() {
   const has = (p: string) => me.company.products.includes(p);
   const home = has('argos') ? (me.user.role === 'seller' ? '/mi-turno' : '/dashboard') : has('hermes') ? '/hermes/pedidos' : has('athena') && me.user.role !== 'seller' ? '/athena/conversaciones' : '/usuarios';
   return (
+    <ExtensionGate active={me.user.role === 'seller' && has('argos') && !me.support}>
     <Routes>
       <Route element={<Layout />}>
         {has('argos') && (
@@ -65,6 +94,7 @@ function App() {
             <Route path="/reportes" element={<Only roles={['admin', 'supervisor']}><Reports /></Only>} />
             <Route path="/alarmas" element={<Only roles={['admin', 'supervisor']}><Alarms /></Only>} />
             <Route path="/que-se-registra" element={<Privacy />} />
+            <Route path="/instalar-extension" element={<InstallGuide />} />
           </>
         )}
         {has('hermes') && (
@@ -89,6 +119,7 @@ function App() {
         <Route path="*" element={<Navigate to={home} replace />} />
       </Route>
     </Routes>
+    </ExtensionGate>
   );
 }
 

@@ -216,3 +216,10 @@ Pendiente: conversaciones de números sin pedido (llegarán con el canal real) y
 - **Motor** (`engine.ts`): un mensaje a la vez por conversación; valida la dirección con el validador de Hermes; respeta clientes bloqueados (no crea el pedido y pasa a una persona); no crea dos pedidos en la misma conversación. Si la empresa no tiene Hermes, o el administrador desactiva «crear pedidos», reúne los datos y entrega la conversación.
 - **Pruebas desde la plataforma** («Probar Athena»): conversaciones marcadas como prueba, aparte de la bandeja; no crean pedidos reales ni escriben a nadie.
 - **Pendiente para el final (accesos)**: credencial de IA, número de WhatsApp (hoy el canal es `simulado`; la entrada real es `POST /api/athena/inbound`) y plantillas. No verificado todavía contra la API real de Anthropic: las pruebas usan una API imitada.
+
+## Instalación de la extensión guiada desde la plataforma
+
+- **Descarga configurada**: `GET /api/argos/extension.zip` entrega la extensión con la dirección pública del servidor ya puesta (y su permiso en el manifiesto), así nadie escribe la dirección a mano. La dirección sale de `PUBLIC_URL`, o de `RENDER_EXTERNAL_URL`, o del servidor local en desarrollo. Con dominio propio hay que definir `PUBLIC_URL`.
+- **Guía ilustrada** (`/instalar-extension`, también en el menú de Argos): 5 pasos, uno a la vez, con un dibujo de lo que se ve en pantalla y dónde hacer clic. Los dibujos son ilustraciones propias, no capturas de Chrome.
+- **Puerta de entrada**: una vendedora de una empresa con Argos que aún no ha iniciado sesión en la extensión ve la guía antes que la plataforma. La guía consulta `GET /api/argos/extension/status` cada 3 segundos y termina sola cuando la extensión inicia sesión. Hay una salida («no puedo instalarla en este equipo») que vale solo para esa sesión del navegador.
+- El cambio de contraseña temporal ocurre antes de la guía, porque la extensión no acepta contraseñas temporales.
