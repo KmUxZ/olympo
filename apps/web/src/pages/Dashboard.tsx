@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../auth';
 import { Link } from 'react-router-dom';
 import { useApi, useNow } from '../lib/api';
-import { connectedPct, pctTone, ago, BREAK_LABEL, fmtLongDay, fmtSeconds, fmtMinutes, fmtTime, INCIDENT_LABEL, INCIDENT_STATUS, LIVE_STATE, scheduleText } from '../lib/format';
+import { connectedPct, ago, BREAK_LABEL, fmtLongDay, fmtSeconds, fmtMinutes, fmtTime, INCIDENT_LABEL, INCIDENT_STATUS, LIVE_STATE, scheduleText } from '../lib/format';
 import { Badge, Empty, ErrorNote, Freshness, Loading, StatePill } from '../components/ui';
 import { ShiftDetailModal } from '../components/ShiftDetail';
 import { Composition, Donut, HourBars, STATE_ORDER, TeamTimeline } from '../components/charts';
@@ -109,7 +109,7 @@ export function Dashboard() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Vendedora</th><th>Estado</th><th>Herramienta reciente</th><th>Último dato</th><th>Turno de hoy</th><th title="Parte del turno de hoy con señal de la extensión">Conectada hoy</th><th>Línea</th><th>Novedades</th><th></th></tr>
+                <tr><th>Vendedora</th><th>Estado</th><th>Herramienta reciente</th><th>Último dato</th><th>Turno de hoy</th><th title="Actividad: parte del turno, sin contar pausas, con teclado o ratón en las herramientas. Conectada: parte del turno con señal de la extensión.">Actividad hoy</th><th>Línea</th><th>Novedades</th><th></th></tr>
               </thead>
               <tbody>
                 {data.sellers.map((s: Row) => (
@@ -148,10 +148,18 @@ export function Dashboard() {
                         const total = parts ? parts.reduce((n, p) => n + p.value, 0) : 0;
                         const pct = parts ? connectedPct(total, parts.find((p) => p.key === 'sin_datos')?.value ?? 0) : null;
                         if (pct === null || !parts) return '—';
+                        const minutes = (key: string) => parts.find((p) => p.key === key)?.value ?? 0;
+                        const worked = total - minutes('pausa');
+                        const activity = worked > 0 ? Math.max(0, Math.min(100, Math.round((minutes('observada') / worked) * 100))) : null;
                         return (
                           <>
-                            <span title="Porcentaje del turno en que la extensión envió señal. No mide tecleo: los tramos grises son tiempo conectada sin teclado ni ratón en las herramientas."><Badge tone={pctTone(pct)}>{pct}% conectada</Badge></span>
+                            {activity !== null && (
+                              <span title="Parte del turno, sin contar pausas, con teclado o ratón en las herramientas. Leer un chat o atender una llamada no cuenta como actividad.">
+                                <Badge tone={activity >= 90 ? 'ok' : activity >= 80 ? 'warn' : 'danger'}>{activity}% con actividad</Badge>
+                              </span>
+                            )}
                             <div style={{ marginTop: 6 }}><Composition parts={parts} height={8} /></div>
+                            <span className="sub" title="Parte del turno en que la extensión envió señal. No mide tecleo.">{pct}% conectada</span>
                           </>
                         );
                       })()}
