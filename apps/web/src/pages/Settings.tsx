@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api, useApi } from '../lib/api';
-import { PancakeSettings } from './PancakeSettings';
 import { Badge, Empty, ErrorNote, Field, FormModal, Loading, PageHead } from '../components/ui';
 
 interface Tool { id: string; name: string; hosts: string[]; active: boolean }
@@ -67,8 +66,6 @@ export function Settings() {
           La extensión solo puede ver estos sitios, y solo durante un turno activo. Cuando agregues uno nuevo, cada vendedora deberá autorizarlo en su extensión.
         </div>
       </div>
-
-      <PancakeSettings />
 
       <SupportAccess />
 

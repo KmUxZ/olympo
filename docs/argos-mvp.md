@@ -114,17 +114,12 @@ Nunca lee qué tecla se pulsó, texto, formularios, portapapeles ni direcciones 
 - Las métricas de resultado entrarán como **eventos verificables** de cada plataforma (mensaje enviado, venta, entrega),
   asociados a persona, línea y turno. Argos los mostrará junto a la actividad, sin mezclarlos ni inferirlos.
 
-## 8. Integración con Pancake (implementada)
+## 8. Integración con Pancake (retirada)
 
-- Cada **línea** de Argos se conecta a una **página** de Pancake con su identificador y su token de página
-  (Configuración → Integración con Pancake). El token se valida, se guarda cifrado y nunca se devuelve.
-- Cada usuario de Pancake se **empareja** con una cuenta de Argos.
-- Cada 5 minutos se consulta `GET /pages/{page_id}/statistics/users` y se guardan, por hora, línea y usuario:
-  mensajes atendidos, conversaciones distintas, comentarios, teléfonos captados y tiempo medio de respuesta.
-- El dashboard muestra por vendedora los mensajes atendidos hoy y su respuesta media, con la hora del último dato.
-- Límites: la granularidad es de una hora; el tiempo medio diario es una media ponderada por mensajes;
-  las horas se interpretan en la zona horaria de la empresa (debe coincidir con la de la página en Pancake).
-- Pendiente: ventas/pedidos, vista por línea y por rango de fechas (módulo Reportes), y webhooks para tiempo real.
+Se retiró el 23 de noviembre de 2026. En la operación real todas las vendedoras usan un mismo usuario de Pancake
+y se distinguen por etiquetas puestas a mano, así que las estadísticas por usuario no permiten separar personas y
+las etiquetas son inexactas. Argos queda con lo que observa la extensión: conexión, actividad, pausas y turnos.
+No hay token de Pancake que configurar. La migración `013_sin_pancake.sql` elimina sus tablas.
 
 ## 9. Nivel de plataforma (implementado)
 
@@ -155,7 +150,7 @@ plataforma sobre una empresa (creación, suspensión, límites, restablecimiento
 | Módulo | Qué hace | Quién |
 | --- | --- | --- |
 | **Alarmas** | Cinco reglas configurables (turno sin iniciar, sin señal, pausa prolongada, sin actividad observada, novedad sin atender). Las alertas se abren y se cierran solas; «Enterado» indica que alguien ya la atiende. Aviso en el menú, en el dashboard y, opcionalmente, notificación del navegador. | Reglas: administrador. Alertas: administrador y supervisor (su equipo). |
-| **Reportes** | Totales por persona y por día, con filtros de fecha, persona, equipo y línea. Incluye mensajes atendidos y respuesta media de Pancake. Exporta a CSV para Excel. Sin conteos de teclas. | Administrador y supervisor. |
+| **Reportes** | Totales por persona y por día, con filtros de fecha, persona, equipo y línea. Exporta a CSV para Excel. Sin conteos de teclas. | Administrador y supervisor. |
 | **Agenda** | Tareas, reuniones, compromisos y actividades para una persona, un equipo o toda la empresa. Cada quien marca lo suyo como hecho. | Todos; cada rol programa dentro de su alcance. |
 | **Mensajes** | Mensajes directos, a un equipo o a toda la empresa, con contador de no leídos. Una vendedora escribe a su supervisión y a administración. | Todos. |
 | **Acompañamiento** | Sesiones de seguimiento con notas y compromisos con fecha y estado. La persona ve las suyas. | Registra: supervisor y administrador. |

@@ -26,7 +26,7 @@ function ProductFields({ value, onChange }: { value: string[]; onChange: (v: str
 interface Company {
   id: string; name: string; timezone: string; isDemo: boolean; status: 'active' | 'suspended'; suspendedReason: string;
   limits: { maxSellers?: number | null; maxLines?: number | null }; products: string[]; supportAccessUntil: string | null; createdAt: string;
-  users: number; sellers: number; lines: number; activeShifts: number; lastUsedAt: string | null; connectedLines: number; connectionErrors: number;
+  users: number; sellers: number; lines: number; activeShifts: number; lastUsedAt: string | null;
   admins: { id: string; name: string; email: string }[];
 }
 
@@ -76,7 +76,7 @@ export function Platform() {
         {!list.data ? (list.error ? <ErrorNote error={list.error} /> : <Loading />) : list.data.companies.length ? (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Empresa</th><th>Estado</th><th>Vendedoras</th><th>Líneas</th><th>En turno ahora</th><th>Último uso</th><th>Integraciones</th><th>Soporte</th><th></th></tr></thead>
+              <thead><tr><th>Empresa</th><th>Estado</th><th>Vendedoras</th><th>Líneas</th><th>En turno ahora</th><th>Último uso</th><th>Soporte</th><th></th></tr></thead>
               <tbody>
                 {list.data.companies.map((c) => {
                   const supportOpen = c.supportAccessUntil && new Date(c.supportAccessUntil).getTime() > now;
@@ -96,9 +96,6 @@ export function Platform() {
                       <td>{quota(c.lines, c.limits.maxLines)}</td>
                       <td>{c.activeShifts}</td>
                       <td className="nowrap">{c.lastUsedAt ? ago(c.lastUsedAt, now) : 'Nunca'}</td>
-                      <td>
-                        {c.connectedLines === 0 ? <span className="muted">Sin conectar</span> : c.connectionErrors ? <Badge tone="danger">{c.connectionErrors} con error</Badge> : <Badge tone="ok">{c.connectedLines} conectada{c.connectedLines > 1 ? 's' : ''}</Badge>}
-                      </td>
                       <td>
                         {supportOpen ? (
                           <>
@@ -189,7 +186,7 @@ function CreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: (c: {
   return (
     <FormModal title="Nueva empresa" submitLabel="Crear empresa" onClose={onClose} onSubmit={save}>
       <Field label="Nombre de la empresa"><input required minLength={2} value={name} onChange={(e) => setName(e.target.value)} /></Field>
-      <Field label="Zona horaria" hint="Debe coincidir con la de sus páginas en Pancake. Ejemplo: America/Bogota.">
+      <Field label="Zona horaria" hint="Ejemplo: America/Bogota.">
         <input required value={timezone} onChange={(e) => setTimezone(e.target.value)} className="mono" />
       </Field>
       <div className="row">

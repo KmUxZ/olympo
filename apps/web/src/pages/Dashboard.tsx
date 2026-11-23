@@ -31,7 +31,6 @@ export function Dashboard() {
   // "Hace X" se calcula con el reloj del servidor para que no dependa del reloj de este equipo.
   const now = localNow + (new Date(data.serverTime).getTime() - (updatedAt ?? localNow));
   const c = data.counts;
-  const hasChannel = data.channel?.connectedLines > 0;
   // Minutos de hoy por estado y persona, a partir de los tramos de la línea del día.
   const todayParts = new Map<string, { key: string; value: number }[]>();
   for (const t of data.timelines as { userId: string; segments: { start: string; end: string; state: string }[] }[]) {
@@ -105,17 +104,12 @@ export function Dashboard() {
       <div className="card rise">
         <div className="card-head">
           <h2>Vendedoras</h2>
-          {hasChannel && (
-            <span className={`xs ${data.channel.errors ? 'fresh stale' : 'muted'}`}>
-              Pancake: {data.channel.errors ? `${data.channel.errors} línea(s) con error · ` : ''}{data.channel.lastSyncAt ? `datos de ${ago(data.channel.lastSyncAt, now)}` : 'pendiente de primera sincronización'}
-            </span>
-          )}
         </div>
         {data.sellers.length ? (
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Vendedora</th><th>Estado</th><th>Herramienta reciente</th><th>Último dato</th><th>Turno de hoy</th><th title="Parte del turno de hoy con señal de la extensión">Conectada hoy</th>{hasChannel && <th>Atención hoy · Pancake</th>}<th>Línea</th><th>Novedades</th><th></th></tr>
+                <tr><th>Vendedora</th><th>Estado</th><th>Herramienta reciente</th><th>Último dato</th><th>Turno de hoy</th><th title="Parte del turno de hoy con señal de la extensión">Conectada hoy</th><th>Línea</th><th>Novedades</th><th></th></tr>
               </thead>
               <tbody>
                 {data.sellers.map((s: Row) => (
@@ -162,16 +156,6 @@ export function Dashboard() {
                         );
                       })()}
                     </td>
-                    {hasChannel && (
-                      <td className="nowrap">
-                        {s.channel ? (
-                          <>
-                            {s.channel.inbox} mensajes atendidos
-                            <span className="sub">Respuesta media {fmtSeconds(s.channel.avgResponseSeconds)}</span>
-                          </>
-                        ) : <span className="muted">Sin datos hoy</span>}
-                      </td>
-                    )}
                     <td>{s.lines.length ? s.lines.map((l) => l.label).join(', ') : <span className="muted">Sin línea</span>}</td>
                     <td>{s.openIncidents > 0 ? <Badge tone="danger">{s.openIncidents} abierta{s.openIncidents > 1 ? 's' : ''}</Badge> : '—'}</td>
                     <td>{s.shift && <button className="btn sm" onClick={() => setOpenShift(s.shift!.id)}>Ver turno</button>}</td>
@@ -188,7 +172,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      <HourlyCharts hourly={data.hourly} now={new Date(now)} showInbox={hasChannel} />
+      <HourlyCharts hourly={data.hourly} now={new Date(now)} />
 
       <div className="grid cols-2">
         <div className="card">
@@ -235,8 +219,8 @@ export function Dashboard() {
  * Actividad observada por hora y, si hay integración, mensajes atendidos por hora.
  * Son dos medidas con unidades distintas: van en dos gráficos con el mismo eje de horas, no en uno con dos escalas.
  */
-function HourlyCharts({ hourly, now, showInbox }: { hourly: { hour: number; observedMinutes: number; inbox: number }[]; now: Date; showInbox: boolean }) {
-  const withData = hourly.filter((h) => h.observedMinutes > 0 || (showInbox && h.inbox > 0));
+function HourlyCharts({ hourly, now }: { hourly: { hour: number; observedMinutes: number }[]; now: Date }) {
+  const withData = hourly.filter((h) => h.observedMinutes > 0);
   if (!withData.length) {
     return (
       <div className="card">
@@ -249,17 +233,9 @@ function HourlyCharts({ hourly, now, showInbox }: { hourly: { hour: number; obse
   const last = Math.max(now.getHours(), Math.max(...withData.map((h) => h.hour)));
   const shown = hourly.filter((h) => h.hour >= first && h.hour <= last);
   return (
-    <div className={showInbox ? 'grid cols-2' : ''}>
-      <div className="card">
-        <div className="card-head"><h2>Actividad observada por hora</h2><span className="xs muted">Hoy · minutos-persona en herramientas</span></div>
-        <HourBars unit="min" values={shown.map((h) => ({ hour: h.hour, value: h.observedMinutes }))} />
-      </div>
-      {showInbox && (
-        <div className="card">
-          <div className="card-head"><h2>Mensajes atendidos por hora</h2><span className="xs muted">Hoy · dato de Pancake</span></div>
-          <HourBars unit="mensajes" tone="blue" values={shown.map((h) => ({ hour: h.hour, value: h.inbox }))} />
-        </div>
-      )}
+    <div className="card">
+      <div className="card-head"><h2>Actividad observada por hora</h2><span className="xs muted">Hoy · minutos-persona en herramientas</span></div>
+      <HourBars unit="min" values={shown.map((h) => ({ hour: h.hour, value: h.observedMinutes }))} />
     </div>
   );
 }
@@ -279,5 +255,4 @@ interface Row {
   breakMinutes: number;
   lines: { id: string; label: string }[];
   openIncidents: number;
-  channel: { inbox: number; conversations: number; avgResponseSeconds: number | null; fetchedAt: string } | null;
 }

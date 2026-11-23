@@ -16,9 +16,9 @@ const parts = (r: Totals) => [
 ];
 
 interface Totals { shifts: number; openShifts: number; durationMinutes: number; observedMinutes: number; noActivityMinutes: number; breakMinutes: number; noDataMinutes: number; incidents: number }
-interface UserRow extends Totals { userId: string; userName: string; teamName: string | null; inbox: number | null; avgResponseSeconds: number | null }
+interface UserRow extends Totals { userId: string; userName: string; teamName: string | null }
 interface DayRow extends Totals { day: string }
-interface Report { byUser: UserRow[]; byDay: DayRow[]; hasChannelData: boolean; generatedAt: string }
+interface Report { byUser: UserRow[]; byDay: DayRow[]; generatedAt: string }
 
 const hours = (min: number) => (min / 60).toFixed(1).replace('.', ',');
 
@@ -49,8 +49,8 @@ export function Reports() {
     if (!data) return;
     if (tab === 'persona') {
       downloadCsv(`reporte-por-persona_${from}_${to}.csv`,
-        ['Persona', 'Equipo', 'Turnos', '% conectada', 'Horas en turno', 'Horas con actividad observada', 'Horas sin actividad observada', 'Horas en pausa', 'Horas sin datos', 'Novedades', 'Mensajes atendidos (Pancake)', 'Respuesta media en segundos (Pancake)'],
-        data.byUser.map((r) => [r.userName, r.teamName, r.shifts, pctOf(r), hours(r.durationMinutes), hours(r.observedMinutes), hours(r.noActivityMinutes), hours(r.breakMinutes), hours(r.noDataMinutes), r.incidents, r.inbox, r.avgResponseSeconds]));
+        ['Persona', 'Equipo', 'Turnos', '% conectada', 'Horas en turno', 'Horas con actividad observada', 'Horas sin actividad observada', 'Horas en pausa', 'Horas sin datos', 'Novedades'],
+        data.byUser.map((r) => [r.userName, r.teamName, r.shifts, pctOf(r), hours(r.durationMinutes), hours(r.observedMinutes), hours(r.noActivityMinutes), hours(r.breakMinutes), hours(r.noDataMinutes), r.incidents]));
     } else {
       downloadCsv(`reporte-por-dia_${from}_${to}.csv`,
         ['Día', 'Turnos', '% conectada', 'Horas en turno', 'Horas con actividad observada', 'Horas sin actividad observada', 'Horas en pausa', 'Horas sin datos', 'Novedades'],
@@ -63,7 +63,7 @@ export function Reports() {
 
   return (
     <>
-      <PageHero kpis={[{ label: 'Turnos', value: data ? total(data.byUser, 'shifts') : '—' }, { label: 'En turno', value: data ? fmtMinutes(total(data.byUser, 'durationMinutes')) : '—' }, { label: 'Con actividad observada', value: data ? fmtMinutes(total(data.byUser, 'observedMinutes')) : '—' }]} title="Reportes" subtitle="Totales del periodo a partir de los turnos cerrados y de los datos de Pancake.">
+      <PageHero kpis={[{ label: 'Turnos', value: data ? total(data.byUser, 'shifts') : '—' }, { label: 'En turno', value: data ? fmtMinutes(total(data.byUser, 'durationMinutes')) : '—' }, { label: 'Con actividad observada', value: data ? fmtMinutes(total(data.byUser, 'observedMinutes')) : '—' }]} title="Reportes" subtitle="Totales del periodo a partir de los turnos cerrados y de lo que registra la extensión.">
         <button className="btn" disabled={!data || !rows.length} onClick={exportCsv}>Exportar a Excel (CSV)</button>
       </PageHero>
 
@@ -116,7 +116,6 @@ export function Reports() {
               <thead>
                 <tr>
                   <th>{tab === 'persona' ? 'Persona' : 'Día'}</th><th>Turnos</th><th>En turno</th><th title="Parte del tiempo en turno con señal de la extensión">Conectada</th><th>Reparto del tiempo</th><th>Con actividad observada</th><th>Sin actividad observada</th><th>En pausa</th><th>Sin datos</th><th>Novedades</th>
-                  {tab === 'persona' && data.hasChannelData && <><th>Mensajes atendidos</th><th>Respuesta media</th></>}
                 </tr>
               </thead>
               <tbody>
@@ -132,7 +131,6 @@ export function Reports() {
                     <td>{fmtMinutes(r.breakMinutes)}</td>
                     <td>{fmtMinutes(r.noDataMinutes)}</td>
                     <td>{r.incidents}</td>
-                    {tab === 'persona' && data.hasChannelData && 'userId' in r && <><td>{r.inbox ?? '—'}</td><td>{fmtSeconds(r.avgResponseSeconds)}</td></>}
                   </tr>
                 ))}
                 <tr>
@@ -146,7 +144,6 @@ export function Reports() {
                   <td><strong>{fmtMinutes(total(rows, 'breakMinutes'))}</strong></td>
                   <td><strong>{fmtMinutes(total(rows, 'noDataMinutes'))}</strong></td>
                   <td><strong>{total(rows, 'incidents')}</strong></td>
-                  {tab === 'persona' && data.hasChannelData && <><td><strong>{data.byUser.reduce((n, r) => n + (r.inbox ?? 0), 0)}</strong></td><td></td></>}
                 </tr>
               </tbody>
             </table>
@@ -157,7 +154,6 @@ export function Reports() {
         <div className="card-pad small muted" style={{ borderTop: '1px solid var(--color-border)' }}>
           {open > 0 && <><strong>{open} turno(s) siguen en curso</strong> y aún no suman horas: se incluyen al cerrarse. </>}
           «Sin actividad observada» no equivale a no trabajar. Los reportes no incluyen conteos de teclas ni clics.
-          {data?.hasChannelData ? ' Los mensajes y tiempos de respuesta provienen de Pancake.' : ' Conecta Pancake en Configuración para incluir mensajes atendidos y tiempos de respuesta.'}
         </div>
       </div>
     </>

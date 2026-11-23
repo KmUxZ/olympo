@@ -146,43 +146,6 @@ export function reportRoutes(app: FastifyInstance): void {
       ),
     ]);
 
-    // Atención según la plataforma de mensajería, en el mismo periodo y con los mismos filtros.
-    const cParams: unknown[] = [ctx.companyId, q.from, q.to];
-    let cWhere = await scopeSql(ctx, 'x.user_id', cParams);
-    if (q.userId) {
-      cParams.push(q.userId);
-      cWhere += ` AND x.user_id = $${cParams.length}`;
-    }
-    if (q.teamId) {
-      cParams.push(q.teamId);
-      cWhere += ` AND u.team_id = $${cParams.length}`;
-    }
-    if (q.lineId) {
-      cParams.push(q.lineId);
-      cWhere += ` AND h.line_id = $${cParams.length}`;
-    }
-    const channel = await db.query(
-      `SELECT x.user_id AS "userId", sum(h.inbox_count)::int AS inbox,
-              CASE WHEN sum(h.inbox_count) > 0 THEN (sum(h.avg_response_ms::bigint * h.inbox_count) / sum(h.inbox_count) / 1000)::int END AS "avgResponseSeconds"
-         FROM argos_channel_hours h
-         JOIN argos_external_staff x ON x.company_id = h.company_id AND x.provider = h.provider AND x.external_id = h.external_id
-         JOIN core_users u ON u.id = x.user_id
-        WHERE h.company_id = $1 AND h.hour_start >= $2::timestamptz AND h.hour_start <= $3::timestamptz ${cWhere}
-        GROUP BY x.user_id`,
-      cParams,
-    );
-
-    const rows = byUser.rows.map((r) => {
-      const c = channel.rows.find((x) => x.userId === r.userId);
-      return { ...r, inbox: c?.inbox ?? null, avgResponseSeconds: c?.avgResponseSeconds ?? null };
-    });
-    // Personas con datos de mensajería pero sin turnos en el periodo: también se muestran.
-    for (const c of channel.rows) {
-      if (rows.some((r) => r.userId === c.userId)) continue;
-      const u = (await db.query(`SELECT u.name, t.name AS team FROM core_users u LEFT JOIN core_teams t ON t.id = u.team_id WHERE u.id = $1`, [c.userId])).rows[0];
-      rows.push({ userId: c.userId, userName: u?.name ?? '', teamName: u?.team ?? null, shifts: 0, openShifts: 0, durationMinutes: 0, observedMinutes: 0, noActivityMinutes: 0, breakMinutes: 0, noDataMinutes: 0, incidents: 0, inbox: c.inbox, avgResponseSeconds: c.avgResponseSeconds });
-    }
-
-    return { from: q.from, to: q.to, generatedAt: new Date(), hasChannelData: channel.rows.length > 0, byUser: rows, byDay: byDay.rows };
+    return { from: q.from, to: q.to, generatedAt: new Date(), byUser: byUser.rows, byDay: byDay.rows };
   });
 }

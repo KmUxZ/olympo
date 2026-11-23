@@ -46,9 +46,7 @@ export function platformRoutes(app: FastifyInstance): void {
                 (SELECT count(*)::int FROM core_users u WHERE u.company_id = c.id AND u.status = 'active' AND u.role = 'seller') AS sellers,
                 (SELECT count(*)::int FROM argos_lines l WHERE l.company_id = c.id AND l.active) AS lines,
                 (SELECT count(*)::int FROM argos_shifts s WHERE s.company_id = c.id AND s.status = 'active') AS "activeShifts",
-                (SELECT max(s.last_used_at) FROM core_sessions s WHERE s.company_id = c.id) AS "lastUsedAt",
-                (SELECT count(*)::int FROM argos_line_connections x WHERE x.company_id = c.id) AS "connectedLines",
-                (SELECT count(*)::int FROM argos_line_connections x WHERE x.company_id = c.id AND x.status = 'error') AS "connectionErrors"
+                (SELECT max(s.last_used_at) FROM core_sessions s WHERE s.company_id = c.id) AS "lastUsedAt"
            FROM core_companies c ORDER BY c.created_at`,
       ),
       db.query(`SELECT id, company_id, name, email FROM core_users WHERE role = 'admin' AND status = 'active' ORDER BY created_at`),

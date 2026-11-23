@@ -26,7 +26,7 @@ services:
         fromDatabase:
           name: olympo-db
           property: connectionString
-      # Clave con la que se cifran los tokens de integraciones (Pancake). Render la genera una sola vez.
+      # Clave con la que se cifran los tokens de integraciones que se conecten. Render la genera una sola vez.
       # Si se pierde o cambia, hay que volver a pegar esos tokens.
       - key: OLYMPO_SECRET_KEY
         generateValue: true

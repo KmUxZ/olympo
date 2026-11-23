@@ -2,7 +2,6 @@ import { resolveSettings } from '../config.ts';
 import { db } from '../db/db.ts';
 import { audit } from '../core/http.ts';
 import { closeShift } from './summary.ts';
-import { syncAll } from './pancake.ts';
 import { evaluateAlarms } from './alarms.ts';
 import { runReminders } from '../hermes/bot.ts';
 
@@ -54,12 +53,10 @@ export function startJobs(log: { error: (o: unknown, msg?: string) => void }): (
   const timers = [
     setInterval(safe('cierre automático', autoCloseStaleShifts), 5 * 60_000),
     setInterval(safe('depuración', purgeOldActivity), 6 * 3600_000),
-    setInterval(safe('sincronización Pancake', () => syncAll()), 5 * 60_000),
     setInterval(safe('alarmas', evaluateAlarms), 60_000),
     setInterval(safe('recordatorios de Hermes', runReminders), 60_000),
   ];
   setTimeout(safe('cierre automático', autoCloseStaleShifts), 5_000);
   setTimeout(safe('depuración', purgeOldActivity), 15_000);
-  setTimeout(safe('sincronización Pancake', () => syncAll()), 20_000);
   return () => timers.forEach(clearInterval);
 }

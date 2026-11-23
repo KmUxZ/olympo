@@ -73,19 +73,6 @@ export function dashboardRoutes(app: FastifyInstance): void {
     ]);
     const shiftIds = JSON.stringify(shifts.rows.map((s) => s.id));
 
-    // Atención de hoy según la plataforma de mensajería (dato verificable, no inferido del teclado).
-    const channel = await db.query(
-      `SELECT s.user_id, sum(h.inbox_count)::int AS inbox, sum(h.unique_inbox_count)::int AS conversations,
-              CASE WHEN sum(h.inbox_count) > 0 THEN (sum(h.avg_response_ms::bigint * h.inbox_count) / sum(h.inbox_count) / 1000)::int END AS avg_response_seconds,
-              max(h.fetched_at) AS fetched_at
-         FROM argos_channel_hours h
-         JOIN argos_external_staff s ON s.company_id = h.company_id AND s.provider = h.provider AND s.external_id = h.external_id
-        WHERE h.company_id = $1 AND h.hour_start >= $2::timestamptz AND s.user_id ${inIds(3)}
-        GROUP BY s.user_id`,
-      [ctx.companyId, startOfLocalDay(ctx.company.timezone, now).toISOString(), userIds],
-    );
-    const channelSync = (await db.query(`SELECT count(*)::int AS lines, max(last_sync_at) AS last_sync_at, count(*) FILTER (WHERE status = 'error')::int AS errors FROM argos_line_connections WHERE company_id = $1`, [ctx.companyId])).rows[0];
-
     const [breaks, lastActivity, totals] = await Promise.all([
       db.query(`SELECT shift_id, reason, started_at, ended_at FROM argos_breaks WHERE shift_id ${inIds(1)}`, [shiftIds]),
       db.query(
@@ -110,19 +97,9 @@ export function dashboardRoutes(app: FastifyInstance): void {
         GROUP BY 1`,
       [ctx.companyId, startOfLocalDay(ctx.company.timezone, now).toISOString(), userIds, ctx.company.timezone],
     );
-    // Mensajes atendidos por hora según la plataforma de mensajería (misma escala de horas, otra unidad).
-    const inboxRows = await db.query(
-      `SELECT extract(hour FROM (h.hour_start AT TIME ZONE $4))::int AS hour, sum(h.inbox_count)::int AS inbox
-         FROM argos_channel_hours h
-         JOIN argos_external_staff s ON s.company_id = h.company_id AND s.provider = h.provider AND s.external_id = h.external_id
-        WHERE h.company_id = $1 AND h.hour_start >= $2::timestamptz AND s.user_id ${inIds(3)}
-        GROUP BY 1`,
-      [ctx.companyId, startOfLocalDay(ctx.company.timezone, now).toISOString(), userIds, ctx.company.timezone],
-    );
     const hourly = Array.from({ length: 24 }, (_, hour) => ({
       hour,
       observedMinutes: hourlyRows.rows.find((r) => r.hour === hour)?.minutes ?? 0,
-      inbox: inboxRows.rows.find((r) => r.hour === hour)?.inbox ?? 0,
     }));
 
     // Línea del día: los turnos de hoy de cada persona, minuto a minuto agrupados en tramos.
@@ -143,9 +120,7 @@ export function dashboardRoutes(app: FastifyInstance): void {
       const schedule = schedules.rows.find((s) => s.user_id === u.id);
       const scheduledNow = isScheduledNow(schedule, ctx.company.timezone, now);
       const openIncidents = incidents.rows.filter((i) => i.userId === u.id).length;
-      const ch = channel.rows.find((c) => c.user_id === u.id);
       const base = {
-        channel: ch ? { inbox: ch.inbox, conversations: ch.conversations, avgResponseSeconds: ch.avg_response_seconds, fetchedAt: ch.fetched_at } : null,
         user: u,
         lines: lines.rows.filter((l) => l.assigned_user_id === u.id).map((l) => ({ id: l.id, label: l.label })),
         schedule: schedule ? { weekdays: schedule.weekdays, startTime: schedule.startTime, endTime: schedule.endTime } : null,
@@ -215,7 +190,6 @@ export function dashboardRoutes(app: FastifyInstance): void {
       serverTime: now,
       hourly,
       timelines,
-      channel: { provider: 'pancake', connectedLines: channelSync.lines, lastSyncAt: channelSync.last_sync_at, errors: channelSync.errors },
       settings: { staleSeconds, activityWindowMinutes },
       counts: { ...counts, total: users.length, enTurno: users.length - counts.fuera_de_turno, sinIniciarProgramadas: notStarted, novedadesAbiertas: incidents.rows.length },
       sellers,
