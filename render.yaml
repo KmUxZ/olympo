@@ -1,0 +1,35 @@
+# Despliegue de OLYMPO en Render: un servidor (API + web ya compilada) y una base PostgreSQL.
+# En Render: New → Blueprint → elegir este repositorio. Render crea los dos y los conecta.
+databases:
+  - name: olympo-db
+    plan: basic-256mb
+    region: virginia
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: olympo
+    runtime: node
+    plan: starter
+    region: virginia
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: olympo-db
+          property: connectionString
+      # Clave con la que se cifran los tokens de integraciones (Pancake). Render la genera una sola vez.
+      # Si se pierde o cambia, hay que volver a pegar esos tokens.
+      - key: OLYMPO_SECRET_KEY
+        generateValue: true
+      # Credencial de la IA de Athena. Se pega a mano en el panel de Render cuando se vaya a conectar.
+      - key: ANTHROPIC_API_KEY
+        sync: false

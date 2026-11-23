@@ -1,17 +1,17 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from '../config.ts';
 
 // Cifrado de credenciales de integraciones (tokens de terceros) antes de guardarlas en la base.
-// Clave: variable OLYMPO_SECRET_KEY (32 bytes en base64). En desarrollo, si no existe, se genera
+// Clave: variable OLYMPO_SECRET_KEY (idealmente 32 bytes en base64; cualquier otro texto largo y secreto también sirve). En desarrollo, si no existe, se genera
 // una en data/secret.key (fuera de git). En producción debe definirse la variable.
 function loadKey(): Buffer {
   const fromEnv = process.env.OLYMPO_SECRET_KEY;
   if (fromEnv) {
     const key = Buffer.from(fromEnv, 'base64');
-    if (key.length !== 32) throw new Error('OLYMPO_SECRET_KEY debe ser de 32 bytes en base64.');
-    return key;
+    // Si no son exactamente 32 bytes en base64 (p. ej. un valor generado por el hosting), se deriva una clave de 32 bytes del texto.
+    return key.length === 32 ? key : createHash('sha256').update(fromEnv, 'utf8').digest();
   }
   const file = join(config.dataDir, 'secret.key');
   if (existsSync(file)) return Buffer.from(readFileSync(file, 'utf8').trim(), 'base64');

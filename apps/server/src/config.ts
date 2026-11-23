@@ -10,7 +10,9 @@ export const config = {
   dataDir: process.env.DATA_DIR ?? resolve(root, 'data'),
   webDist: resolve(root, 'apps/web/dist'),
   /** Orígenes desde los que se aceptan peticiones con cookie de sesión. */
-  webOrigins: (process.env.WEB_ORIGINS ?? 'http://localhost:5173,http://127.0.0.1:5173').split(',').map((s) => s.trim()),
+  // En Render, la dirección pública del servicio llega sola en RENDER_EXTERNAL_URL; un dominio propio se añade en WEB_ORIGINS.
+  webOrigins: [process.env.WEB_ORIGINS ?? 'http://localhost:5173,http://127.0.0.1:5173', process.env.RENDER_EXTERNAL_URL ?? '']
+    .join(',').split(',').map((s) => s.trim()).filter(Boolean),
   cookieSecure: process.env.NODE_ENV === 'production',
   sessionDays: 14,
 };
