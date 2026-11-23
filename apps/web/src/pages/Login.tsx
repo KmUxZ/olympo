@@ -22,6 +22,19 @@ function AuthFrame({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Campo de contraseña con un botón para verla mientras se escribe: evita errores al iniciar sesión. */
+function PasswordInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="pw">
+      <input {...props} type={show ? 'text' : 'password'} />
+      <button type="button" className="pw-toggle" aria-pressed={show} onClick={() => setShow(!show)}>
+        {show ? 'Ocultar' : 'Ver'}
+      </button>
+    </span>
+  );
+}
+
 export function Login() {
   const { refresh } = useAuth();
   const [email, setEmail] = useState('');
@@ -55,7 +68,7 @@ export function Login() {
           <input type="email" required autoComplete="username" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
         </Field>
         <Field label="Contraseña">
-          <input type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <PasswordInput required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </Field>
         <button className="btn primary" disabled={busy}>
           {busy ? 'Entrando…' : 'Iniciar sesión'}
@@ -96,13 +109,13 @@ export function ChangePassword({ forced }: { forced?: boolean }) {
         </div>
         <ErrorNote error={error} />
         <Field label="Contraseña temporal o actual">
-          <input type="password" required autoComplete="current-password" autoFocus value={current} onChange={(e) => setCurrent(e.target.value)} />
+          <PasswordInput required autoComplete="current-password" autoFocus value={current} onChange={(e) => setCurrent(e.target.value)} />
         </Field>
         <Field label="Nueva contraseña" hint="Mínimo 10 caracteres.">
-          <input type="password" required minLength={10} autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
+          <PasswordInput required minLength={10} autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
         </Field>
         <Field label="Repite la nueva contraseña">
-          <input type="password" required minLength={10} autoComplete="new-password" value={repeat} onChange={(e) => setRepeat(e.target.value)} />
+          <PasswordInput required minLength={10} autoComplete="new-password" value={repeat} onChange={(e) => setRepeat(e.target.value)} />
         </Field>
         <button className="btn primary" disabled={busy}>
           {busy ? 'Guardando…' : 'Guardar contraseña'}

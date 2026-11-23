@@ -40,6 +40,24 @@ async function openOrder() {
   render();
 }
 let data = { auth: null, state: null };
+/** «Nuevo pedido» solo existe si la empresa tiene Hermes. Si el servidor aún no informa los productos, se deja visible. */
+const canOrder = () => {
+  const products = data.state?.company?.products;
+  return Array.isArray(products) ? products.includes('hermes') : true;
+};
+
+/** Campo de contraseña con un botón para verla mientras se escribe. */
+function passwordField(input) {
+  const toggle = h('button', { type: 'button', class: 'pw-toggle', 'aria-pressed': 'false' }, 'Ver');
+  toggle.addEventListener('click', () => {
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    toggle.textContent = show ? 'Ocultar' : 'Ver';
+    toggle.setAttribute('aria-pressed', String(show));
+    input.focus();
+  });
+  return h('span', { class: 'pw' }, input, toggle);
+}
 
 function h(tag, props = {}, ...children) {
   const el = document.createElement(tag);
@@ -117,7 +135,7 @@ function loginView() {
     },
     h('p', { class: 'muted' }, 'Inicia sesión con tu cuenta de la plataforma.'),
     h('label', {}, 'Correo', email),
-    h('label', {}, 'Contraseña', password),
+    h('label', {}, 'Contraseña', passwordField(password)),
     ...(devBuild ? [h('details', {}, h('summary', {}, 'Servidor'), h('label', { style: 'margin-top:6px' }, 'Dirección del servidor', server))] : []),
     h('button', { class: 'primary', type: 'submit', disabled: ui.busy }, ui.busy ? 'Entrando…' : 'Iniciar sesión'),
   );
@@ -275,7 +293,7 @@ function idleView(state) {
     consent,
     perm,
     h('button', { class: 'primary', disabled: ui.busy || Boolean(consent) || (Boolean(state.tools?.length) && !state.permissionsOk), onclick: () => send({ type: 'startShift' }) }, 'Iniciar turno'),
-    h('button', { disabled: ui.busy, onclick: () => void openOrder() }, hasDraft() ? 'Continuar pedido' : 'Nuevo pedido'),
+    canOrder() ? h('button', { disabled: ui.busy, onclick: () => void openOrder() }, hasDraft() ? 'Continuar pedido' : 'Nuevo pedido') : null,
     summary
       ? h(
           'div',
@@ -358,7 +376,7 @@ function shiftView(state) {
     );
   } else {
     out.push(
-      h('button', { class: 'primary', disabled: ui.busy, onclick: () => void openOrder() }, hasDraft() ? 'Continuar pedido' : 'Nuevo pedido'),
+      canOrder() ? h('button', { class: 'primary', disabled: ui.busy, onclick: () => void openOrder() }, hasDraft() ? 'Continuar pedido' : 'Nuevo pedido') : null,
       h(
         'div',
         { class: 'row' },
@@ -376,6 +394,7 @@ function render() {
   const signedIn = Boolean(auth?.token);
   document.getElementById('company').textContent = signedIn && state?.company ? `${state.company.name}${state.company.isDemo ? ' · DEMO' : ''}` : '';
   logoutBtn.hidden = !signedIn || Boolean(state?.shift);
+  if (ui.panel === 'order' && state?.company && !canOrder()) ui.panel = null;
 
   const body = !signedIn ? [loginView()] : !state?.company ? [h('p', { class: 'muted' }, 'Cargando…')] : state.shift ? shiftView(state) : idleView(state);
   app.replaceChildren(

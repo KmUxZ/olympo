@@ -46,6 +46,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 button { font: inherit; cursor: pointer; padding: 9px 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text); }
 button.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); font-weight: 600; }
 button.danger { color: var(--danger); border-color: var(--danger); }
+.pw { position: relative; display: block; }
+.pw input { padding-right: 70px; }
+button.pw-toggle { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: auto; border: 0; padding: 4px 8px; background: none; color: #2a56d6; font-size: 12px; font-weight: 600; }
 button.link { border: 0; padding: 0; background: none; color: #2a56d6; text-decoration: underline; }
 button:disabled { opacity: 0.55; cursor: default; }
 .row { display: flex; gap: 8px; }

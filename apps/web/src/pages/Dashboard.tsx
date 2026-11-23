@@ -150,7 +150,7 @@ export function Dashboard() {
                         if (pct === null || !parts) return '—';
                         return (
                           <>
-                            <Badge tone={pctTone(pct)}>{pct}% conectada</Badge>
+                            <span title="Porcentaje del turno en que la extensión envió señal. No mide tecleo: los tramos grises son tiempo conectada sin teclado ni ratón en las herramientas."><Badge tone={pctTone(pct)}>{pct}% conectada</Badge></span>
                             <div style={{ marginTop: 6 }}><Composition parts={parts} height={8} /></div>
                           </>
                         );

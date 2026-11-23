@@ -81,7 +81,7 @@ export function shiftRoutes(app: FastifyInstance): void {
     return {
       serverTime: new Date(),
       user: { id: ctx.userId, name: ctx.name, email: ctx.email, role: ctx.role },
-      company: { name: ctx.company.name, isDemo: ctx.company.isDemo, timezone: ctx.company.timezone },
+      company: { name: ctx.company.name, isDemo: ctx.company.isDemo, timezone: ctx.company.timezone, products: ctx.company.products },
       shift: shift ? shiftView(shift) : null,
       openBreak: shift ? await openBreakOf(shift.id) : null,
       tools: tools.rows,

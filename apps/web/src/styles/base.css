@@ -108,6 +108,9 @@ label.field > span.hint { font-size: var(--text-xs); }
 input, select, textarea { font: inherit; font-size: var(--text-md); color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); padding: 8px 10px; width: 100%; }
 textarea { min-height: 84px; resize: vertical; }
 input[type="checkbox"] { width: auto; }
+.pw { position: relative; display: block; }
+.pw input { padding-right: 76px; }
+.pw-toggle { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: 0; background: none; padding: 4px 8px; font: inherit; font-size: var(--text-sm); font-weight: 600; color: var(--brand-blue); cursor: pointer; border-radius: var(--radius-sm); }
 .checks { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
 .checks label { display: inline-flex; align-items: center; gap: 6px; color: var(--color-text); font-size: var(--text-sm); }
 
