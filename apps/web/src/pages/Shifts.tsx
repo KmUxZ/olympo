@@ -8,6 +8,7 @@ import type { ScheduleValue } from '../components/ScheduleFields';
 import { ShiftDetailModal } from '../components/ShiftDetail';
 import { AttendanceHeatmap } from '../components/charts';
 import type { AttendanceRow } from '../components/charts';
+import { RosterTab } from './Roster';
 
 interface User { id: string; name: string; role: string; status: string; teamName: string | null }
 interface Schedule { userId: string; weekdays: number[]; startTime: string; endTime: string }
@@ -17,7 +18,7 @@ const dayEnd = (d: string) => new Date(`${d}T23:59:59.999`).toISOString();
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 export function Shifts() {
-  const [tab, setTab] = useState<'historial' | 'programacion'>('historial');
+  const [tab, setTab] = useState<'historial' | 'malla' | 'programacion'>('historial');
   const recentPath = useMemo(() => `/api/argos/shifts?limit=300&from=${encodeURIComponent(new Date(Date.now() - 7 * 86400_000).toISOString())}`, []);
   const recent = useApi<{ shifts: { status: string; durationMinutes: number | null }[] }>(recentPath, 60_000);
   const recentShifts = recent.data?.shifts ?? [];
@@ -25,7 +26,7 @@ export function Shifts() {
   const attendance = useApi<{ days: { key: string; weekday: number }[]; rows: AttendanceRow[]; today: string }>(`/api/argos/reports/attendance?days=${weeks}`, 120_000);
   return (
     <>
-      <PageHero kpis={[{ label: 'En curso ahora', value: recentShifts.filter((s) => s.status === 'active').length }, { label: 'Turnos · 7 días', value: recentShifts.length }, { label: 'Horas · 7 días', value: fmtMinutes(recentShifts.reduce((n, s) => n + (s.durationMinutes ?? 0), 0)) }]} title="Turnos" subtitle="Turnos realizados con su resumen y la programación semanal de cada persona." />
+      <PageHero kpis={[{ label: 'En curso ahora', value: recentShifts.filter((s) => s.status === 'active').length }, { label: 'Turnos · 7 días', value: recentShifts.length }, { label: 'Horas · 7 días', value: fmtMinutes(recentShifts.reduce((n, s) => n + (s.durationMinutes ?? 0), 0)) }]} title="Turnos" subtitle="Turnos realizados con su resumen, la malla de turnos por fecha y el horario fijo de cada persona." />
       <div className="card">
         <div className="card-head">
           <div>
@@ -43,15 +44,16 @@ export function Shifts() {
           <Empty>No hay vendedoras activas.</Empty>
         )}
         <div className="card-pad small muted" style={{ borderTop: '1px solid var(--color-border)' }}>
-          Mide tiempo en turno frente al turno programado, no desempeño. Para los días pasados se usa la programación actual de cada persona.
+          Mide tiempo en turno frente al turno programado, no desempeño. El turno de cada día sale de la malla; donde no hay malla, del horario fijo actual.
         </div>
       </div>
 
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'historial'} onClick={() => setTab('historial')}>Historial</button>
-        <button role="tab" aria-selected={tab === 'programacion'} onClick={() => setTab('programacion')}>Programación</button>
+        <button role="tab" aria-selected={tab === 'malla'} onClick={() => setTab('malla')}>Malla de turnos</button>
+        <button role="tab" aria-selected={tab === 'programacion'} onClick={() => setTab('programacion')}>Horario fijo</button>
       </div>
-      {tab === 'historial' ? <History /> : <Planning />}
+      {tab === 'historial' ? <History /> : tab === 'malla' ? <RosterTab /> : <Planning />}
     </>
   );
 }
@@ -176,7 +178,7 @@ function PlanModal({ user, schedule, onClose, onSaved }: { user: User; schedule?
   return (
     <FormModal title={`Turno de ${user.name}`} onClose={onClose} onSubmit={save}>
       <ScheduleFields value={value} onChange={setValue} />
-      <p className="small muted">La programación sirve para avisar cuando alguien no ha iniciado su turno a la hora prevista. No inicia ni cierra turnos por sí sola.</p>
+      <p className="small muted">El horario fijo se aplica los días que no tienen malla. Sirve para avisar cuando alguien no ha iniciado su turno a la hora prevista. No inicia ni cierra turnos por sí sola.</p>
     </FormModal>
   );
 }

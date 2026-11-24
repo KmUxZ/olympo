@@ -5,6 +5,7 @@ import { resolveSettings } from '../config.ts';
 import { db } from '../db/db.ts';
 import { auditBy, guard, notFound, parse, scopeSql } from '../core/http.ts';
 import { localParts } from '../core/time.ts';
+import { effectiveSchedule, rosterToday } from './roster.ts';
 
 export const ALARM_TYPES = {
   turno_no_iniciado: { label: 'Turno programado sin iniciar', help: 'Minutos después de la hora programada sin que la persona haya iniciado turno.', defaultMinutes: 10 },
@@ -48,7 +49,7 @@ async function currentConditions(company: { id: string; timezone: string; settin
   const [sellers, shifts, breaks, incidents, lastActivity] = await Promise.all([
     db.query(
       `SELECT u.id, u.name, sc.weekdays, sc.start_time, sc.end_time
-         FROM core_users u JOIN argos_schedules sc ON sc.user_id = u.id
+         FROM core_users u LEFT JOIN argos_schedules sc ON sc.user_id = u.id
         WHERE u.company_id = $1 AND u.status = 'active' AND u.role = 'seller'`,
       [company.id],
     ),
@@ -67,20 +68,24 @@ async function currentConditions(company: { id: string; timezone: string; settin
     const p = localParts(company.timezone, now);
     const weekday = new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
     const nowMin = p.hour * 60 + p.minute;
+    const roster = await rosterToday(company.id, company.timezone, now);
     for (const s of sellers.rows) {
-      const start = toMinutes(s.start_time), end = toMinutes(s.end_time);
+      // La malla de hoy manda sobre el horario fijo; si dice descanso, hoy no se espera turno.
+      const plan = effectiveSchedule(s.start_time ? { weekdays: s.weekdays, startTime: s.start_time, endTime: s.end_time } : undefined, roster.entries.get(s.id), weekday);
+      if (!plan) continue;
+      const start = toMinutes(plan.startTime), end = toMinutes(plan.endTime);
       let sinceStart: number | null = null;
       if (start <= end) {
-        if (s.weekdays.includes(weekday) && nowMin >= start && nowMin < end) sinceStart = nowMin - start;
-      } else if (s.weekdays.includes(weekday) && nowMin >= start) sinceStart = nowMin - start;
-      else if (s.weekdays.includes((weekday + 6) % 7) && nowMin < end) sinceStart = nowMin + 1440 - start;
+        if (plan.weekdays.includes(weekday) && nowMin >= start && nowMin < end) sinceStart = nowMin - start;
+      } else if (plan.weekdays.includes(weekday) && nowMin >= start) sinceStart = nowMin - start;
+      else if (plan.weekdays.includes((weekday + 6) % 7) && nowMin < end) sinceStart = nowMin + 1440 - start;
       if (sinceStart === null || sinceStart < rules.turno_no_iniciado.thresholdMinutes) continue;
       if (shifts.rows.some((sh) => sh.user_id === s.id)) continue;
       // Si ya trabajó en esta franja (inició y terminó), no es "sin iniciar".
       const windowStart = new Date(now.getTime() - (sinceStart + 60) * MIN).toISOString();
       const worked = await db.query(`SELECT 1 FROM argos_shifts WHERE user_id = $1 AND started_at >= $2::timestamptz LIMIT 1`, [s.id, windowStart]);
       if (worked.rows.length) continue;
-      out.push({ type: 'turno_no_iniciado', userId: s.id, key: `turno_no_iniciado:${s.id}:${p.year}-${p.month}-${p.day}`, message: `${s.name} tenía turno a las ${s.start_time} y no lo ha iniciado` });
+      out.push({ type: 'turno_no_iniciado', userId: s.id, key: `turno_no_iniciado:${s.id}:${p.year}-${p.month}-${p.day}`, message: `${s.name} tenía turno a las ${plan.startTime} y no lo ha iniciado` });
     }
   }
 

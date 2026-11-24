@@ -14,8 +14,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
 export function reportRoutes(app: FastifyInstance): void {
   /**
    * Cumplimiento del turno programado, por persona y día: tiempo en turno frente al tiempo programado.
-   * Límite conocido: se usa la programación actual de cada persona también para los días pasados
-   * (todavía no se guarda historial de programaciones).
+   * El turno de cada día sale de la malla; donde no hay malla, del horario fijo actual de la persona.
    */
   app.get('/api/argos/reports/attendance', guard('admin', 'supervisor'), async (req) => {
     const ctx = req.ctx;
@@ -58,18 +57,25 @@ export function reportRoutes(app: FastifyInstance): void {
       [ctx.companyId, from, tz, ids],
     );
 
+    // La malla de cada día manda sobre el horario fijo; donde no hay malla se usa el horario fijo actual.
+    const rosterRows = await db.query(`SELECT user_id, day, start_time, end_time FROM argos_roster WHERE company_id = $1 AND day >= $2 AND day <= $3`, [ctx.companyId, days[0].key, todayKey]);
+    const roster = new Map(rosterRows.rows.map((r) => [`${r.user_id}|${r.day}`, r]));
+
     const rows = people.rows.map((p) => {
-      const scheduled = p.start_time ? { weekdays: p.weekdays as number[], start: toMin(p.start_time), end: toMin(p.end_time) } : null;
-      const length = scheduled ? (scheduled.end > scheduled.start ? scheduled.end - scheduled.start : scheduled.end + 1440 - scheduled.start) : 0;
+      const fixed = p.start_time ? { weekdays: p.weekdays as number[], start: toMin(p.start_time), end: toMin(p.end_time) } : null;
       return {
         userId: p.id,
         userName: p.name,
         teamName: p.team,
-        schedule: scheduled ? { weekdays: scheduled.weekdays, startTime: p.start_time, endTime: p.end_time } : null,
+        schedule: fixed ? { weekdays: fixed.weekdays, startTime: p.start_time, endTime: p.end_time } : null,
         days: days.map((d) => {
           const w = worked.rows.find((x) => x.user_id === p.id && x.day === d.key);
           const isToday = d.key === todayKey;
-          const isScheduled = Boolean(scheduled?.weekdays.includes(d.weekday)) && d.key >= p.created_day;
+          const e = roster.get(`${p.id}|${d.key}`);
+          const plan = e ? (e.start_time ? { start: toMin(e.start_time), end: toMin(e.end_time) } : null) : fixed?.weekdays.includes(d.weekday) ? fixed : null;
+          const scheduled = d.key >= p.created_day ? plan : null;
+          const isScheduled = Boolean(scheduled);
+          const length = scheduled ? (scheduled.end > scheduled.start ? scheduled.end - scheduled.start : scheduled.end + 1440 - scheduled.start) : 0;
           // Hoy se compara contra lo que ya debería llevar, no contra el turno completo.
           let expected = isScheduled ? length : 0;
           let pending = false;

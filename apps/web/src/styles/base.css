@@ -564,3 +564,17 @@ button.link { background: none; border: 0; padding: 0; font: inherit; color: var
 @media (max-width: 860px) { .guide-step { grid-template-columns: 1fr; } .guide-dots span { display: none; } }
 @media (prefers-reduced-motion: reduce) { .ill-here, .guide-spinner { animation: none; } }
 .ill-menu .ill-here em { left: calc(100% + 12px); top: 50%; transform: translateY(-50%); }
+
+/* Malla de turnos */
+.roster th, .roster td { text-align: center; vertical-align: top; min-width: 112px; padding: 4px; }
+.roster th:first-child, .roster td:first-child { text-align: left; min-width: 150px; padding: 10px var(--space-4); }
+.roster th.today, .roster td.today { background: var(--color-info-bg); }
+.roster .cell { display: grid; gap: 2px; justify-items: center; align-content: start; width: 100%; min-height: 54px; padding: 6px 4px; border: 1px solid transparent; border-radius: var(--radius-sm); background: none; font: inherit; font-size: var(--text-sm); color: inherit; }
+.roster button.cell { cursor: pointer; }
+.roster button.cell:hover, .roster button.cell:focus-visible { border-color: var(--color-border-strong); background: var(--color-surface); }
+.roster .hours { font-weight: 600; white-space: nowrap; }
+.roster .hours.fixed { font-weight: 400; color: var(--color-text-muted); }
+.roster .ctl { font-size: var(--text-xs); line-height: 1.25; }
+.roster .ctl.ok { color: var(--color-ok); }
+.roster .ctl.warn { color: var(--color-warn); }
+.roster .ctl.danger { color: var(--color-danger); font-weight: 600; }

@@ -54,7 +54,7 @@ export function connectedPct(totalMinutes: number, noDataMinutes: number): numbe
   if (!totalMinutes || totalMinutes <= 0) return null;
   return Math.max(0, Math.min(100, Math.round(((totalMinutes - noDataMinutes) / totalMinutes) * 100)));
 }
-export const pctTone = (pct: number) => (pct >= 90 ? 'ok' : pct >= 70 ? 'warn' : 'danger');
+export const pctTone = (pct: number) => (pct >= 90 ? 'ok' : pct >= 80 ? 'warn' : 'danger');
 
 export function fmtSeconds(sec: number | null | undefined): string {
   if (sec == null) return '—';

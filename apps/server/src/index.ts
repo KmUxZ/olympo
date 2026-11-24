@@ -18,6 +18,7 @@ import { messageRoutes } from './argos/messages.routes.ts';
 import { coachingRoutes } from './argos/coaching.routes.ts';
 import { qualityRoutes } from './argos/quality.routes.ts';
 import { notificationRoutes } from './argos/notifications.routes.ts';
+import { rosterRoutes } from './argos/roster.ts';
 import { extensionRoutes } from './argos/extension.routes.ts';
 import { hermesRoutes } from './hermes/routes.ts';
 import { athenaRoutes } from './athena/routes.ts';
@@ -52,6 +53,7 @@ coachingRoutes(app);
 qualityRoutes(app);
 notificationRoutes(app);
 extensionRoutes(app);
+rosterRoutes(app);
 hermesRoutes(app);
 athenaRoutes(app);
 

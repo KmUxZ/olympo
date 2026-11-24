@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { api, useApi, useNow } from '../lib/api';
+import { MyWeek } from './Roster';
 import { ago, BREAK_LABEL, fmtDateTime, fmtMinutes, fmtTime, scheduleText } from '../lib/format';
 import { Badge, Empty, ErrorNote, Field, FormModal, Freshness, Loading, PageHead } from '../components/ui';
 import { ShiftDetailModal, ShiftSummaryView } from '../components/ShiftDetail';
@@ -72,6 +73,8 @@ export function MyShift() {
           <Link to="/que-se-registra" className="small">¿Qué se registra?</Link>
         </div>
       </div>
+
+      {me?.user.role === 'seller' && <MyWeek />}
 
       {shift && (
         <div className="card card-pad">

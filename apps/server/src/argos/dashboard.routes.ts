@@ -3,6 +3,7 @@ import { db, inIds } from '../db/db.ts';
 import { guard, visibleUserIds } from '../core/http.ts';
 import { startOfLocalDay } from '../core/time.ts';
 import { computeSummary } from './summary.ts';
+import { effectiveSchedule, rosterToday } from './roster.ts';
 
 /**
  * Estados en vivo. Se basan en evidencia, no en suposiciones:
@@ -112,12 +113,15 @@ export function dashboardRoutes(app: FastifyInstance): void {
       timelines.push({ userId: sh.user_id, shiftId: sh.id, status: sh.status, segments: sh.status === 'ended' && sh.summary ? sh.summary.timeline : (await computeSummary(db, sh, now)).timeline });
     }
 
+    // En un día con malla, la malla manda sobre el horario fijo.
+    const roster = await rosterToday(ctx.companyId, ctx.company.timezone, now);
+
     const counts: Record<LiveState, number> = { actividad_observada: 0, sin_actividad_observada: 0, en_pausa: 0, sin_senal: 0, fuera_de_turno: 0 };
     let notStarted = 0;
 
     const sellers = users.map((u) => {
       const shift = shifts.rows.find((s) => s.user_id === u.id);
-      const schedule = schedules.rows.find((s) => s.user_id === u.id);
+      const schedule = effectiveSchedule(schedules.rows.find((s) => s.user_id === u.id), roster.entries.get(u.id), roster.weekday);
       const scheduledNow = isScheduledNow(schedule, ctx.company.timezone, now);
       const openIncidents = incidents.rows.filter((i) => i.userId === u.id).length;
       const base = {

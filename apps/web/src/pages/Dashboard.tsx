@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../auth';
 import { Link } from 'react-router-dom';
 import { useApi, useNow } from '../lib/api';
-import { connectedPct, ago, BREAK_LABEL, fmtLongDay, fmtSeconds, fmtMinutes, fmtTime, INCIDENT_LABEL, INCIDENT_STATUS, LIVE_STATE, scheduleText } from '../lib/format';
+import { connectedPct, pctTone, ago, BREAK_LABEL, fmtLongDay, fmtSeconds, fmtMinutes, fmtTime, INCIDENT_LABEL, INCIDENT_STATUS, LIVE_STATE, scheduleText } from '../lib/format';
 import { Badge, Empty, ErrorNote, Freshness, Loading, StatePill } from '../components/ui';
 import { ShiftDetailModal } from '../components/ShiftDetail';
 import { Composition, Donut, HourBars, STATE_ORDER, TeamTimeline } from '../components/charts';
@@ -159,7 +159,9 @@ export function Dashboard() {
                               </span>
                             )}
                             <div style={{ marginTop: 6 }}><Composition parts={parts} height={8} /></div>
-                            <span className="sub" title="Parte del turno en que la extensión envió señal. No mide tecleo.">{pct}% conectada</span>
+                            <span title="Parte del turno en que la extensión envió señal. No mide tecleo." style={{ display: 'block', marginTop: 6 }}>
+                              <Badge tone={pctTone(pct)}>{pct}% conectada</Badge>
+                            </span>
                           </>
                         );
                       })()}
