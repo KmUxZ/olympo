@@ -291,7 +291,7 @@ function Conversation({ orderId, agent, onChanged }: { orderId: string; agent: s
             <dt>Productos</dt><dd>{itemsLabel(o.items)}</dd>
             <dt>Valor</dt><dd><strong>{money(o.total)}</strong> {o.payment === 'pagado' ? '· ya pagado' : '· contraentrega'}</dd>
             <dt>Dirección</dt><dd>{o.address}, {o.city}{o.notes ? ` · ${o.notes}` : ''}</dd>
-            {o.trackingNumber && <><dt>Guía</dt><dd><span className="mono">{o.trackingNumber}</span> · {o.carrier}{o.trackingUrl && <> · <a href={o.trackingUrl} target="_blank" rel="noopener noreferrer">Rastrear</a></>}</dd></>}
+            {o.trackingNumber && <><dt>Guía</dt><dd><span className="mono">{o.trackingNumber}</span> · {o.carrier}{/^https?:\/\//i.test(o.trackingUrl ?? '') && <> · <a href={o.trackingUrl} target="_blank" rel="noopener noreferrer">Rastrear</a></>}</dd></>}
             {o.sellerName && <><dt>Venta de</dt><dd>{o.sellerName}</dd></>}
             <dt>Creado</dt><dd>{fmtDateTime(o.createdAt)}</dd>
           </dl>

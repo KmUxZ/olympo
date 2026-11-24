@@ -300,7 +300,7 @@ export function hermesRoutes(app: FastifyInstance): void {
       z.discriminatedUnion('action', [
         z.object({ action: z.literal('confirmar') }),
         z.object({ action: z.literal('cancelar'), reason: z.string().trim().min(2).max(200) }),
-        z.object({ action: z.literal('despachar'), carrier: z.string().trim().min(2).max(60), trackingNumber: z.string().trim().min(3).max(60), trackingUrl: z.url().max(300).or(z.literal('')).default('') }),
+        z.object({ action: z.literal('despachar'), carrier: z.string().trim().min(2).max(60), trackingNumber: z.string().trim().min(3).max(60), trackingUrl: z.url().max(300).regex(/^https?:\/\//i, 'el enlace debe empezar por http:// o https://').or(z.literal('')).default('') }),
         z.object({ action: z.literal('en_reparto') }),
         z.object({ action: z.literal('novedad'), type: z.enum(INCIDENT_TYPES), description: z.string().trim().max(300).default('') }),
         z.object({ action: z.literal('entregado') }),

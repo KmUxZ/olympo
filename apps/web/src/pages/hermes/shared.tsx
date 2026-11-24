@@ -90,7 +90,7 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
             <strong style={{ fontSize: 'var(--text-lg)' }}>{o.customerName}</strong>
             <div className="small muted">{o.phone} · {o.address}, {o.city}{o.notes ? ` · ${o.notes}` : ''}</div>
             <div className="small muted">{itemsLabel(o.items)} · <strong>{money(o.total)}</strong> {o.payment === 'pagado' ? '(ya pagado)' : 'contraentrega'}{o.sellerName ? ` · Venta de ${o.sellerName}` : ''}</div>
-            {o.trackingNumber && <div className="small">Guía <span className="mono">{o.trackingNumber}</span> · {o.carrier}{o.trackingUrl && <> · <a href={o.trackingUrl} target="_blank" rel="noopener noreferrer">Rastrear</a></>}</div>}
+            {o.trackingNumber && <div className="small">Guía <span className="mono">{o.trackingNumber}</span> · {o.carrier}{/^https?:\/\//i.test(o.trackingUrl ?? '') && <> · <a href={o.trackingUrl} target="_blank" rel="noopener noreferrer">Rastrear</a></>}</div>}
           </div>
           <Badge tone={st?.tone}>{st?.label ?? o.status}</Badge>
         </div>

@@ -76,6 +76,8 @@ async function authenticate(req: FastifyRequest): Promise<Ctx> {
     const origin = req.headers.origin;
     const self = `${req.protocol}://${req.headers.host}`;
     if (origin && origin !== self && !config.webOrigins.includes(origin)) throw forbidden('Origen no permitido.');
+    // Sin Origin, los navegadores actuales indican de dónde sale la petición: no se aceptan las que vienen de otro sitio.
+    if (!origin && req.headers['sec-fetch-site'] === 'cross-site') throw forbidden('Origen no permitido.');
   }
 
   const load = async () =>

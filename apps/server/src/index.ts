@@ -24,8 +24,34 @@ import { hermesRoutes } from './hermes/routes.ts';
 import { athenaRoutes } from './athena/routes.ts';
 import { startJobs } from './argos/jobs.ts';
 
-const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' }, bodyLimit: 1_048_576 });
+// En producción el servidor está detrás del proxy del hosting: se confía en él para conocer la IP y el protocolo reales.
+const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' }, bodyLimit: 1_048_576, trustProxy: config.cookieSecure });
 await app.register(cookie);
+
+// Cabeceras de seguridad en todas las respuestas.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+app.addHook('onSend', async (req, reply) => {
+  reply.header('x-content-type-options', 'nosniff');
+  reply.header('x-frame-options', 'DENY');
+  reply.header('referrer-policy', 'strict-origin-when-cross-origin');
+  reply.header('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  reply.header('cross-origin-opener-policy', 'same-origin');
+  reply.header('content-security-policy', CSP);
+  if (config.cookieSecure) reply.header('strict-transport-security', 'max-age=31536000; includeSubDomains');
+  // Las respuestas de la API llevan datos de personas: no se guardan en cachés.
+  if (req.url.startsWith('/api/') && !reply.hasHeader('cache-control')) reply.header('cache-control', 'no-store');
+});
 
 app.setErrorHandler((err, req, reply) => {
   if (err instanceof HttpError) return reply.status(err.status).send({ error: { code: err.code, message: err.message } });
@@ -35,7 +61,7 @@ app.setErrorHandler((err, req, reply) => {
   return reply.status(500).send({ error: { code: 'error_interno', message: 'Ocurrió un error inesperado. Inténtalo de nuevo.' } });
 });
 
-app.get('/api/health', async () => ({ ok: true, serverTime: new Date(), db: db.kind }));
+app.get('/api/health', async () => ({ ok: true, serverTime: new Date() }));
 
 // Plataforma compartida (core) y módulos de producto. Zeus, Athena y Hermes se registrarán aquí como módulos hermanos.
 authRoutes(app);

@@ -6,26 +6,36 @@ import { audit, auditBy, badRequest, guard, HttpError, parse, SESSION_COOKIE } f
 import type { Ctx } from './http.ts';
 import { hashPassword, hashToken, MIN_PASSWORD_LENGTH, newToken, verifyPassword } from './security.ts';
 
-// Límite simple de intentos de inicio de sesión por IP + correo (en memoria; suficiente para una instancia).
+// Límite de intentos fallidos (en memoria; suficiente para una instancia). Se cuenta por correo, venga de donde venga,
+// para frenar un ataque repartido entre muchas IP, y también por IP, para frenar a quien prueba muchos correos.
 const attempts = new Map<string, { count: number; resetAt: number }>();
-const MAX_ATTEMPTS = 8;
-const WINDOW_MS = 10 * 60 * 1000;
+const WINDOW_MS = 15 * 60 * 1000;
+const MAX_PER_ACCOUNT = 10;
+const MAX_PER_IP = 40;
+const limitOf = (key: string) => (key.startsWith('ip|') ? MAX_PER_IP : MAX_PER_ACCOUNT);
 
-function checkRate(key: string): void {
+function checkRate(...keys: string[]): void {
   const now = Date.now();
-  const entry = attempts.get(key);
-  if (entry && entry.resetAt > now && entry.count >= MAX_ATTEMPTS) {
-    throw new HttpError(429, 'demasiados_intentos', 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.');
+  for (const key of keys) {
+    const entry = attempts.get(key);
+    if (entry && entry.resetAt > now && entry.count >= limitOf(key)) {
+      throw new HttpError(429, 'demasiados_intentos', 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.');
+    }
   }
 }
 
-function registerFailure(key: string): void {
+function registerFailure(...keys: string[]): void {
   const now = Date.now();
-  const entry = attempts.get(key);
-  if (!entry || entry.resetAt <= now) attempts.set(key, { count: 1, resetAt: now + WINDOW_MS });
-  else entry.count++;
+  for (const key of keys) {
+    const entry = attempts.get(key);
+    if (!entry || entry.resetAt <= now) attempts.set(key, { count: 1, resetAt: now + WINDOW_MS });
+    else entry.count++;
+  }
   if (attempts.size > 5000) for (const [k, v] of attempts) if (v.resetAt <= now) attempts.delete(k);
 }
+
+// Se comprueba contra este hash cuando el correo no existe, para que la respuesta tarde lo mismo que con una cuenta real.
+const DUMMY_HASH = await hashPassword(newToken());
 
 export function publicUser(ctx: Ctx) {
   return {
@@ -41,8 +51,9 @@ export function authRoutes(app: FastifyInstance): void {
       z.object({ email: z.string().trim().toLowerCase().min(3).max(200), password: z.string().min(1).max(200), client: z.enum(['web', 'extension']).default('web') }),
       req.body,
     );
-    const rateKey = `${req.ip}|${body.email}`;
-    checkRate(rateKey);
+    const accountKey = `cuenta|${body.email}`;
+    const ipKey = `ip|${req.ip}`;
+    checkRate(accountKey, ipKey);
 
     const { rows } = await db.query(
       `SELECT u.id, u.company_id, u.name, u.email, u.role, u.team_id, u.password_hash, u.status, u.must_change_password, u.is_platform_admin,
@@ -51,9 +62,9 @@ export function authRoutes(app: FastifyInstance): void {
       [body.email],
     );
     const user = rows[0];
-    const ok = user ? await verifyPassword(body.password, user.password_hash) : false;
+    const ok = (await verifyPassword(body.password, user?.password_hash ?? DUMMY_HASH)) && Boolean(user);
     if (!user || !ok || user.status !== 'active') {
-      registerFailure(rateKey);
+      registerFailure(accountKey, ipKey);
       if (user) {
         await audit(db, {
           companyId: user.company_id, actorId: user.id, actorName: user.name, action: 'acceso.fallido',
@@ -68,7 +79,7 @@ export function authRoutes(app: FastifyInstance): void {
     if (body.client === 'extension' && user.must_change_password) {
       throw new HttpError(403, 'cambio_contrasena_requerido', 'Primero entra a la plataforma web y cambia tu contraseña temporal.');
     }
-    attempts.delete(rateKey);
+    attempts.delete(accountKey);
 
     const token = newToken();
     await db.query(
@@ -101,7 +112,13 @@ export function authRoutes(app: FastifyInstance): void {
   app.post('/api/auth/change-password', guard(), async (req) => {
     const body = parse(z.object({ current: z.string().min(1).max(200), next: z.string().min(MIN_PASSWORD_LENGTH).max(200) }), req.body);
     const { rows } = await db.query('SELECT password_hash FROM core_users WHERE id = $1', [req.ctx.userId]);
-    if (!(await verifyPassword(body.current, rows[0].password_hash))) throw badRequest('La contraseña actual no es correcta.', 'contrasena_incorrecta');
+    const changeKey = `cambio|${req.ctx.userId}`;
+    checkRate(changeKey);
+    if (!(await verifyPassword(body.current, rows[0].password_hash))) {
+      registerFailure(changeKey);
+      throw badRequest('La contraseña actual no es correcta.', 'contrasena_incorrecta');
+    }
+    attempts.delete(changeKey);
     if (body.current === body.next) throw badRequest('La nueva contraseña debe ser distinta de la actual.');
     await db.query('UPDATE core_users SET password_hash = $1, must_change_password = false, updated_at = now() WHERE id = $2', [
       await hashPassword(body.next), req.ctx.userId,

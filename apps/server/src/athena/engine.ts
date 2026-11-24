@@ -102,7 +102,23 @@ function missing(d: Draft): string[] {
   return out;
 }
 
-function toolsFor(c: Conversation, hermes: boolean, canCreate: boolean): Tools {
+/**
+ * Valor más bajo que el catálogo permite cobrar: el producto activo más barato o la cifra más baja escrita en una oferta.
+ * Protege de que un cliente convenza a la IA de anotar un precio inventado.
+ */
+function priceFloor(products: { price: number; offers?: string }[]): number {
+  const values: number[] = [];
+  for (const p of products) {
+    if (p.price > 0) values.push(Number(p.price));
+    for (const m of (p.offers ?? '').match(/\d{1,3}(?:[.,]\d{3})+|\d{4,}/g) ?? []) {
+      const n = Number(m.replace(/[.,]/g, ''));
+      if (n >= 1000) values.push(n);
+    }
+  }
+  return values.length ? Math.min(...values) : 0;
+}
+
+function toolsFor(c: Conversation, hermes: boolean, canCreate: boolean, floor: number): Tools {
   return {
     async guardar_datos(input) {
       const d: Draft = { ...c.draft };
@@ -120,6 +136,10 @@ function toolsFor(c: Conversation, hermes: boolean, canCreate: boolean): Tools {
       const d = c.draft;
       const left = missing(d);
       if (left.length) return `No se puede crear todavía. Falta o hay que corregir: ${left.join('; ')}.`;
+      if (floor > 0 && (d.total ?? 0) < floor) {
+        await handoff(c, `El total anotado ($${(d.total ?? 0).toLocaleString('es-CO')}) está por debajo de los precios del catálogo: revisar antes de crear el pedido`);
+        return 'El valor del pedido no coincide con los precios del catálogo, así que no se creó. La conversación se pasó a una persona: dile al cliente que alguien del equipo le confirma el valor y el pedido.';
+      }
       if (!hermes || !canCreate) {
         await handoff(c, 'Pedido listo para crear: los datos están en la conversación');
         return 'El pedido lo registra una persona del equipo. La conversación ya se le pasó: dile al cliente que en un momento le confirman.';
@@ -179,7 +199,7 @@ export function handleInbound(companyId: string, conversationId: string, text: s
       return { answered: false, mode: 'persona' };
     }
     const { k, model, hermes } = await knowledgeOf(companyId);
-    const tools = toolsFor(c, hermes, k.canCreateOrders);
+    const tools = toolsFor(c, hermes, k.canCreateOrders, priceFloor(k.products));
     try {
       let out;
       if (aiReady()) {

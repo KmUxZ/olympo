@@ -100,7 +100,9 @@ export const fmtLongDay = (v: string | Date) => {
 
 /** Descarga un CSV que Excel en español abre directamente (separador ; y marca BOM). */
 export function downloadCsv(filename: string, headers: string[], rows: (string | number | null | undefined)[][]): void {
-  const cell = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  // Un texto que empieza por = + - @ se ejecutaría como fórmula al abrir el archivo en Excel: se le antepone un apóstrofo.
+  const safe = (v: string | number | null | undefined) => (typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? `'${v}` : String(v ?? ''));
+  const cell = (v: string | number | null | undefined) => `"${safe(v).replace(/"/g, '""')}"`;
   const text = [headers, ...rows].map((r) => r.map(cell).join(';')).join('\r\n');
   const url = URL.createObjectURL(new Blob(['﻿', text], { type: 'text/csv;charset=utf-8' }));
   const a = document.createElement('a');

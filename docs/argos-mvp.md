@@ -231,3 +231,13 @@ Pendiente: conversaciones de números sin pedido (llegarán con el canal real) y
 - **Control**: cada celda de hoy o pasada muestra la hora real de inicio, los minutos de retraso (más de 5) o «No inició turno». La alerta de turno no iniciado, el tablero («programada ahora») y «Semana de un vistazo» usan la malla del día.
 - **Límites conocidos**: un turno de malla que cruza la medianoche deja de contarse como «programado ahora» al pasar las 00:00; la extensión sigue mostrando el horario fijo, no la malla.
 - **Tablero**: la columna «Actividad hoy» muestra «% con actividad» y «% conectada», ambos con verde ≥ 90, amarillo 80–89 y rojo < 80.
+
+## Seguridad (revisión de noviembre de 2026)
+
+- **Acceso**: contraseñas con scrypt y sal; el token de sesión solo se guarda como hash; cookie `HttpOnly` + `SameSite=Lax` (+ `Secure` en producción). Límite de intentos fallidos: 10 por cuenta y 40 por IP cada 15 minutos (en memoria: se reinicia con el servidor). Una cuenta inexistente responde igual y tarda lo mismo que una contraseña incorrecta.
+- **Permisos**: cada ruta exige sesión y rol (`guard`); cada consulta filtra por empresa; los productos se validan en el servidor.
+- **CSRF**: las escrituras con cookie solo se aceptan del propio origen o de `WEB_ORIGINS`; sin `Origin`, se rechaza lo que el navegador marca como de otro sitio.
+- **Cabeceras**: CSP (solo recursos propios, sin marcos), `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS en producción y `Cache-Control: no-store` en la API.
+- **Datos que entran**: validación con zod en todas las rutas, SQL siempre con parámetros, enlaces de rastreo solo `http(s)`, exportaciones CSV protegidas contra fórmulas.
+- **Athena**: no crea un pedido cuyo total esté por debajo del precio más bajo del catálogo (o de la cifra más baja escrita en una oferta); lo pasa a una persona.
+- **Pendiente conocido**: el límite de intentos es por instancia (si algún día hay varias, debe ir a la base de datos); no hay segundo factor de autenticación; `/api/athena/simulate` y `/inbound` no tienen límite de uso propio (solo administrador/supervisor); la extensión se instala sin firma de la Chrome Web Store.
