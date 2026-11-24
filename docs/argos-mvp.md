@@ -227,7 +227,7 @@ Pendiente: conversaciones de números sin pedido (llegarán con el canal real) y
 ## Malla de turnos
 
 - **Qué es**: el turno de cada vendedora por fecha (`argos_roster`: persona, día, inicio y fin; sin horas = descanso). En un día con malla, la malla manda sobre el horario fijo semanal (`argos_schedules`); donde no hay malla se sigue aplicando el horario fijo.
-- **Dónde**: Turnos → «Malla de turnos». Cuadrícula semanal, edición por celda (aplicable a varios días), «Copiar semana anterior» y «Subir malla» (pegar desde Excel o CSV: una fila por vendedora, una columna por fecha; acepta `08:00-17:00`, `8am a 5pm`, `Descanso`). Editan administrador y supervisor (su equipo); la vendedora ve su semana en «Mi turno».
+- **Dónde**: Turnos → «Malla de turnos». Cuadrícula semanal, edición por celda (aplicable a varios días), «Copiar semana anterior» y «Subir malla» (archivo de Excel .xlsx, CSV o pegar las celdas: una fila por vendedora, una columna por fecha; acepta `08:00-17:00`, `8am a 5pm`, `Descanso`). Editan administrador y supervisor (su equipo); la vendedora ve su semana en «Mi turno».
 - **Control**: cada celda de hoy o pasada muestra la hora real de inicio, los minutos de retraso (más de 5) o «No inició turno». La alerta de turno no iniciado, el tablero («programada ahora») y «Semana de un vistazo» usan la malla del día.
-- **Límites conocidos**: un turno de malla que cruza la medianoche deja de contarse como «programado ahora» al pasar las 00:00; no se suben archivos .xlsx (se pega desde Excel o se usa CSV); la extensión sigue mostrando el horario fijo, no la malla.
+- **Límites conocidos**: un turno de malla que cruza la medianoche deja de contarse como «programado ahora» al pasar las 00:00; la extensión sigue mostrando el horario fijo, no la malla.
 - **Tablero**: la columna «Actividad hoy» muestra «% con actividad» y «% conectada», ambos con verde ≥ 90, amarillo 80–89 y rojo < 80.

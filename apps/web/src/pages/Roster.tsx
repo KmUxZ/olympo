@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { api, useApi } from '../lib/api';
 import { DAYS, downloadCsv } from '../lib/format';
+import { sheetFileText } from '../lib/xlsx';
 import { Badge, Empty, ErrorNote, Field, FormModal, Loading, Modal } from '../components/ui';
 
 interface Person { id: string; name: string; email: string; teamName: string | null; schedule: { weekdays: number[]; startTime: string; endTime: string } | null }
@@ -310,14 +311,18 @@ function UploadModal({ data, days, onClose, onSave }: { data: RosterData; days: 
 
   const review = (source = text) => {
     setError(null);
-    if (!source.trim()) return setError('Pega la malla desde Excel o elige un archivo.');
+    if (!source.trim()) return setError('Elige el archivo de Excel o pega la malla.');
     setParsed(parseRoster(source, data.people, days));
   };
   async function loadFile(file: File | undefined) {
     if (!file) return;
-    const content = await file.text();
-    setText(content);
-    review(content);
+    try {
+      const content = await sheetFileText(file);
+      setText(content);
+      review(content);
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }
   async function run() {
     if (!parsed?.entries.length) return;
@@ -358,8 +363,8 @@ function UploadModal({ data, days, onClose, onSave }: { data: RosterData; days: 
             <div className="row">
               <button type="button" className="btn sm" onClick={template}>Descargar plantilla de esta semana</button>
               <label className="btn sm" style={{ cursor: 'pointer' }}>
-                Elegir archivo CSV
-                <input type="file" accept=".csv,.txt,text/csv" hidden onChange={(e) => void loadFile(e.target.files?.[0])} />
+                Elegir archivo de Excel o CSV
+                <input type="file" accept=".xlsx,.xlsm,.xls,.csv,.txt,text/csv" hidden onChange={(e) => void loadFile(e.target.files?.[0])} />
               </label>
             </div>
             <Field label="O pega aquí las celdas copiadas desde Excel">

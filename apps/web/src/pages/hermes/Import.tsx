@@ -1,4 +1,5 @@
 // Hermes · importación de pedidos en lote: pegar desde Excel o subir un CSV, revisar y crear.
+import { sheetFileText } from '../../lib/xlsx';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { downloadCsv } from '../../lib/format';
@@ -86,9 +87,13 @@ export function ImportModal({ onClose, onImported }: { onClose: () => void; onIm
   }
   async function loadFile(file: File | undefined) {
     if (!file) return;
-    const content = await file.text();
-    setText(content);
-    await review(content);
+    try {
+      const content = await sheetFileText(file);
+      setText(content);
+      await review(content);
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }
   async function run() {
     setBusy(true);
@@ -134,7 +139,7 @@ export function ImportModal({ onClose, onImported }: { onClose: () => void; onIm
               <button className="btn primary" disabled={busy || !text.trim()} onClick={() => void review()}>{busy ? 'Revisando…' : 'Revisar antes de importar'}</button>
               <label className="btn" style={{ cursor: 'pointer' }}>
                 Elegir archivo CSV
-                <input type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" className="sr-only" onChange={(e) => void loadFile(e.target.files?.[0])} />
+                <input type="file" accept=".xlsx,.xlsm,.xls,.csv,.txt,.tsv,text/csv,text/plain" className="sr-only" onChange={(e) => void loadFile(e.target.files?.[0])} />
               </label>
               <button className="btn ghost" onClick={template}>Descargar plantilla</button>
             </div>
