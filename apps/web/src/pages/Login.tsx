@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { useAuth } from '../auth';
 import { api } from '../lib/api';
 import { ErrorNote, Field } from '../components/ui';
-import { ArgosLogo, OlympoLogo } from '../components/brand';
+import { ArgosLogo, OlympoLogo, Splash } from '../components/brand';
 
 /** Marco de las pantallas de acceso: panel de marca a la izquierda, formulario a la derecha. */
 function AuthFrame({ children }: { children: React.ReactNode }) {
@@ -41,6 +41,7 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [entering, setEntering] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -48,13 +49,18 @@ export function Login() {
     setError(null);
     try {
       await api('POST', '/api/auth/login', { email, password, client: 'web' });
+      // Un instante con la pantalla de carga, para que la entrada no sea un salto brusco.
+      setEntering(true);
+      await new Promise((r) => setTimeout(r, 700));
       await refresh();
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
+      setEntering(false);
     }
   }
 
+  if (entering) return <Splash label="Entrando…" />;
   return (
     <AuthFrame>
       <form className="stack" onSubmit={submit}>

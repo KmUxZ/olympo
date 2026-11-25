@@ -4,7 +4,6 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth';
 import type { Role } from './auth';
 import { Layout } from './Layout';
-import { Loading } from './components/ui';
 import { ChangePassword, Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Shifts } from './pages/Shifts';
@@ -34,6 +33,7 @@ import { ZeusCustomers } from './pages/zeus/Customers';
 import { ZeusRepurchase } from './pages/zeus/Repurchase';
 import { ZeusFollowups } from './pages/zeus/Followups';
 import { InstallGuide } from './pages/InstallGuide';
+import { Splash } from './components/brand';
 import { api } from './lib/api';
 import '@fontsource-variable/montserrat/wght.css';
 import './styles/base.css';
@@ -49,7 +49,7 @@ function ExtensionGate({ active, children }: { active: boolean; children: React.
     if (sessionStorage.getItem('argos.guia.omitida') === '1') return setState('open');
     api<{ connected: boolean }>('GET', '/api/argos/extension/status').then((s) => setState(s.connected ? 'open' : 'needed')).catch(() => setState('open'));
   }, [active]);
-  if (state === 'checking') return <Loading />;
+  if (state === 'checking') return <Splash />;
   if (state === 'needed') {
     return (
       <InstallGuide
@@ -72,7 +72,7 @@ function Only({ roles, children }: { roles: Role[]; children: React.ReactNode })
 
 function App() {
   const { me, loading } = useAuth();
-  if (loading) return <Loading />;
+  if (loading) return <Splash />;
   if (!me) return <Login />;
   if (me.user.mustChangePassword) return <ChangePassword forced />;
   // Cada empresa ve solo los productos que tiene contratados.

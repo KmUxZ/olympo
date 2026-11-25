@@ -29,6 +29,23 @@ export function OlympoMark({ size = 28, color = 'var(--brand-blue)' }: { size?: 
   );
 }
 
+/**
+ * Pantalla de carga: el anillo del isotipo gira alrededor de la cumbre. Solo CSS, sin imágenes ni librerías.
+ * El mismo dibujo está en index.html para que se vea desde antes de que cargue la aplicación.
+ */
+export function Splash({ label = 'Cargando…' }: { label?: string }) {
+  return (
+    <div className="splash" role="status">
+      <svg className="splash-mark" width="76" height="76" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+        <path className="splash-ring" d="M9.5 39.5A20 20 0 1 1 38.5 39.5" fill="none" stroke="var(--brand-blue)" strokeWidth="6.5" />
+        <path d="M6 42 18 27l5 5 6-9 13 19z" fill="var(--brand-blue)" />
+      </svg>
+      <span className="splash-word">Olympo</span>
+      <span className="splash-label">{label}</span>
+    </div>
+  );
+}
+
 export function ArgosLogo({ size = 28 }: { size?: number }) {
   return (
     <span className="logo">

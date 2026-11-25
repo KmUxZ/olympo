@@ -291,6 +291,13 @@ tbody tr:hover { background: rgb(15 157 146 / 4%); }
 .card.hero-card .btn.primary { background: #fff; border-color: #fff; color: var(--brand-obsidian); }
 .big-timer { font-family: var(--font-display); font-weight: 800; font-size: clamp(2rem, 5vw, 3rem); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 
+/* Pantalla de carga */
+.splash { position: fixed; inset: 0; z-index: 50; display: grid; place-content: center; justify-items: center; gap: 10px; background: var(--color-bg); animation: splash-in 0.25s var(--ease) both; }
+.splash-ring { transform-box: view-box; transform-origin: 24px 25.7px; animation: splash-spin 1.1s cubic-bezier(0.6, 0.1, 0.4, 0.9) infinite; }
+.splash-word { font-family: var(--font-display); font-weight: 800; font-size: 1.25rem; letter-spacing: 0.02em; text-transform: uppercase; color: var(--color-text); }
+.splash-label { font-size: var(--text-sm); color: var(--color-text-muted); }
+@keyframes splash-spin { to { transform: rotate(360deg); } }
+@keyframes splash-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @keyframes grow-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 @keyframes grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
