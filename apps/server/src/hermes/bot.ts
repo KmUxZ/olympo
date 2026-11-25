@@ -273,7 +273,7 @@ export async function send(o: Order, msg: Outgoing, sender = 'Hermes'): Promise<
   let status = 'simulado';
   let kind = msg.template ? 'plantilla' : 'texto';
   let body = msg.body;
-  let externalId: string | null = null;
+  let delivery: { mode: 'texto' | 'plantilla'; templateId?: string; params?: Record<string, string> } | null = null;
   let error = '';
   if (ch.driver !== 'simulado') {
     const windowOpen = Boolean(o.last_inbound_at) && Date.now() - new Date(o.last_inbound_at!).getTime() < WINDOW_MS;
@@ -284,17 +284,13 @@ export async function send(o: Order, msg: Outgoing, sender = 'Hermes'): Promise<
     } else if (windowOpen) {
       kind = 'texto';
       body = withOptions(msg);
-      const res = await pancake.sendText(ch.channel, o.phone, body);
-      status = res.ok ? 'enviado' : 'fallido';
-      externalId = res.id ?? null;
-      error = res.error ?? '';
+      status = 'en_cola';
+      delivery = { mode: 'texto' };
     } else if (templateId && msg.params) {
       kind = 'plantilla';
       body = renderTemplate(msg.template, msg.params);
-      const res = await pancake.sendTemplate(ch.channel, o.phone, templateId, msg.params);
-      status = res.ok ? 'enviado' : 'fallido';
-      externalId = res.id ?? null;
-      error = res.error ?? '';
+      status = 'en_cola';
+      delivery = { mode: 'plantilla', templateId, params: msg.params };
     } else if (msg.params && !TEMPLATES.find((t) => t.key === msg.template)?.required) {
       // Aviso de cortesía sin plantilla: no se envía y no es motivo para molestar a nadie.
       status = 'omitido';
@@ -305,14 +301,64 @@ export async function send(o: Order, msg: Outgoing, sender = 'Hermes'): Promise<
     }
   }
   await db.query(
-    `INSERT INTO hermes_messages (company_id, order_id, phone, direction, kind, template, body, buttons, status, sender, external_id, error)
-     VALUES ($1, $2, $3, 'out', $4, $5, $6, $7::jsonb, $8, $9, $10, $11)
-     ON CONFLICT (company_id, external_id) WHERE external_id IS NOT NULL DO NOTHING`,
-    [o.company_id, o.id, o.phone, kind, msg.template, body, JSON.stringify(msg.buttons ?? []), status, sender, externalId, error],
+    `INSERT INTO hermes_messages (company_id, order_id, phone, direction, kind, template, body, buttons, status, sender, error, delivery)
+     VALUES ($1, $2, $3, 'out', $4, $5, $6, $7::jsonb, $8, $9, $10, $11::jsonb)`,
+    [o.company_id, o.id, o.phone, kind, msg.template, body, JSON.stringify(msg.buttons ?? []), status, sender, error, delivery ? JSON.stringify(delivery) : null],
   );
   await patch(o, { last_outbound_at: new Date().toISOString() });
   if (status === 'fallido') await setAttention(o, `No se pudo enviar un mensaje por WhatsApp: ${error}`);
+  // El envío real lo hace la cola, a un ritmo que Pancake acepta. Se la despierta enseguida para no esperar a la tarea periódica.
+  if (status === 'en_cola') setImmediate(() => void deliverQueued().catch(() => {}));
   return { ok: status !== 'fallido', error };
+}
+
+// ───────── Cola de envíos ─────────
+const MAX_ATTEMPTS = 5;
+let delivering = false;
+
+/**
+ * Entrega los mensajes en cola, uno tras otro y en el orden en que se crearon.
+ * Un fallo pasajero (límite de uso, red) se reintenta más tarde con esperas cada vez mayores; uno definitivo queda como fallido y pide atención.
+ */
+export async function deliverQueued(): Promise<void> {
+  if (delivering) return;
+  delivering = true;
+  try {
+    for (;;) {
+      const { rows } = await db.query(
+        `SELECT id, company_id, order_id, phone, body, delivery, attempts FROM hermes_messages
+          WHERE status = 'en_cola' AND (next_attempt_at IS NULL OR next_attempt_at <= now()) ORDER BY created_at, id LIMIT 25`,
+      );
+      if (!rows.length) return;
+      for (const m of rows) await deliverOne(m);
+    }
+  } finally {
+    delivering = false;
+  }
+}
+
+async function deliverOne(m: { id: string; company_id: string; order_id: string | null; phone: string; body: string; delivery: { mode: string; templateId?: string; params?: Record<string, string> } | null; attempts: number }): Promise<void> {
+  const ch = await channelOf(m.company_id);
+  let res: pancake.SendResult;
+  if (ch.driver !== 'pancake' || !ch.channel) res = { ok: false, error: 'El canal de WhatsApp se desactivó antes de enviar este mensaje' };
+  else if (m.delivery?.mode === 'plantilla' && m.delivery.templateId) res = await pancake.sendTemplate(ch.channel, m.phone, m.delivery.templateId, m.delivery.params ?? {});
+  else res = await pancake.sendText(ch.channel, m.phone, m.body);
+
+  if (res.ok) {
+    // Si Pancake repite un identificador, el mensaje igual salió: se guarda sin él.
+    await db.query(`UPDATE hermes_messages SET status = 'enviado', external_id = $2, error = '' WHERE id = $1`, [m.id, res.id ?? null]).catch(() =>
+      db.query(`UPDATE hermes_messages SET status = 'enviado', error = '' WHERE id = $1`, [m.id]),
+    );
+    return;
+  }
+  if (res.retry && m.attempts + 1 < MAX_ATTEMPTS) {
+    const waitSeconds = 30 * 2 ** m.attempts; // 30 s, 1 min, 2 min, 4 min
+    await db.query(`UPDATE hermes_messages SET attempts = attempts + 1, next_attempt_at = now() + ($2 || ' seconds')::interval, error = $3 WHERE id = $1`, [m.id, String(waitSeconds), `Reintentando: ${res.error ?? ''}`]);
+    return;
+  }
+  await db.query(`UPDATE hermes_messages SET status = 'fallido', attempts = attempts + 1, error = $2 WHERE id = $1`, [m.id, res.error ?? 'No se pudo enviar']);
+  const o = m.order_id ? await getOrder(m.company_id, m.order_id) : null;
+  if (o) await setAttention(o, `No se pudo enviar un mensaje por WhatsApp: ${res.error ?? 'error desconocido'}`);
 }
 
 /** Alguien del equipo le escribió al cliente desde Pancake: queda en la conversación del pedido. */
@@ -391,8 +437,10 @@ async function openIncident(o: Order): Promise<{ id: string } | null> {
 }
 
 // ───────── Respuestas del cliente ─────────
-const YES = /^(s[ií]|si confirmo|confirmo|confirmar|confirmado|ok|okay|dale|listo|de una|correcto|claro)\b/i;
-const NO = /^(no|cancelar|cancela|cancelo|ya no|no lo quiero)\b/i;
+// El límite de palabra de JavaScript (\b) no reconoce las tildes: «Sí» no terminaba en límite y el bot no lo entendía.
+const END = '(?![a-záéíóúüñ0-9])';
+const YES = new RegExp(`^(s[ií]|si confirmo|confirmo|confirmar|confirmado|ok|okay|dale|listo|de una|correcto|claro)${END}`, 'i');
+const NO = new RegExp(`^(no|cancelar|cancela|cancelo|ya no|no lo quiero)${END}`, 'i');
 
 /**
  * Procesa un mensaje entrante. `payload` es el botón pulsado (si lo hubo); `text`, lo que escribió.

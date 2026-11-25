@@ -145,6 +145,7 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
                   <div className="bubble-meta">{m.direction === 'in' ? 'Cliente' : m.sender} · {fmtTime(m.createdAt)}</div>
                   <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
                   {m.buttons.length > 0 && <div className="bubble-buttons">{m.buttons.map((b) => <span key={b.payload}>{b.label}</span>)}</div>}
+                  {m.status === 'en_cola' && <div className="bubble-meta">En cola de envío…</div>}
                   {(m.status === 'fallido' || m.status === 'omitido') && <div className="bubble-error" role="note">{m.status === 'fallido' ? 'No se envió' : 'No se envió (aviso opcional)'}{m.error ? `: ${m.error}` : ''}</div>}
                 </div>
               ))}

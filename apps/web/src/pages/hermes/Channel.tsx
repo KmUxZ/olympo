@@ -2,10 +2,11 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api, useApi } from '../../lib/api';
+import { ago } from '../../lib/format';
 import { Badge, ErrorNote, Field, Loading } from '../../components/ui';
 
 interface Template { key: string; title: string; required: boolean; when: string; text: string; buttons: string[] }
-interface Channel { driver: string; pageId: string; hasToken: boolean; webhookUrl: string | null; templates: Record<string, string>; missing: string[]; catalog: Template[] }
+interface Channel { driver: string; pageId: string; hasToken: boolean; webhookUrl: string | null; templates: Record<string, string>; missing: string[]; catalog: Template[]; poll: { at: string | null; status: string }; queued: number }
 
 function Copy({ text, label = 'Copiar' }: { text: string; label?: string }) {
   const [done, setDone] = useState(false);
@@ -90,16 +91,27 @@ export function ChannelCard({ onChanged }: { onChanged?: () => void }) {
           </Field>
         </div>
 
-        <h3>2. Avisos de mensajes entrantes</h3>
-        {data.webhookUrl ? (
-          <>
-            <p className="small muted">En Pancake abre <strong>Configuración → Herramientas → Webhooks</strong> de esa página, pega esta dirección y marca el evento de mensajes. Es secreta: no la compartas.</p>
+        <h3>2. Respuestas de los clientes</h3>
+        <p className="small muted">
+          No hay que configurar nada: Hermes le pregunta a Pancake cada minuto si hay mensajes nuevos, con el mismo token.
+          {live && data.poll.at && <> Última consulta: <strong>{ago(data.poll.at)}</strong>{data.poll.status.startsWith('error') ? '' : data.poll.status === 'pedidos' ? ' (pedido a pedido)' : ''}.</>}
+          {live && data.queued > 0 && <> Mensajes en cola de envío: <strong>{data.queued}</strong>.</>}
+        </p>
+        {live && data.poll.status.startsWith('error') && <div className="alert warn">La última consulta a Pancake falló ({data.poll.status.replace(/^error: /, '')}). Se reintenta sola cada minuto.</div>}
+        {live && <div><button type="button" className="btn sm" disabled={busy} onClick={() => void run(async () => { await api('POST', '/api/hermes/channel/poll', {}); return api<Channel>('GET', '/api/hermes/channel'); }, 'Consulta hecha.')}>Consultar ahora</button></div>}
+        {data.webhookUrl && (
+          <details>
+            <summary className="small">Opcional: recibirlas al instante con el webhook de Pancake</summary>
+            <p className="small muted" style={{ marginTop: 8 }}>
+              Requiere ranuras libres en tu plan de Pancake (el webhook de una página consume 2). Si las tienes, activa <strong>Webhook</strong> en las herramientas de esa página y pega esta dirección. Es secreta: no la compartas.
+              Con o sin webhook, la consulta de cada minuto sigue funcionando como respaldo.
+            </p>
             <div className="row">
               <code className="grow" style={{ overflowWrap: 'anywhere', fontSize: 'var(--text-xs)' }}>{data.webhookUrl}</code>
               <Copy text={data.webhookUrl} label="Copiar dirección" />
             </div>
-          </>
-        ) : <p className="small muted">La dirección aparece al guardar la conexión.</p>}
+          </details>
+        )}
 
         <h3>3. Plantillas aprobadas</h3>
         <p className="small muted">

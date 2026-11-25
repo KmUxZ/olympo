@@ -3,7 +3,8 @@ import { db } from '../db/db.ts';
 import { audit } from '../core/http.ts';
 import { closeShift } from './summary.ts';
 import { evaluateAlarms } from './alarms.ts';
-import { runReminders } from '../hermes/bot.ts';
+import { deliverQueued, runReminders } from '../hermes/bot.ts';
+import { pollInbound } from '../hermes/inbound.ts';
 
 /** Cierra turnos que quedaron abiertos sin señal (p. ej. se apagó el equipo sin finalizar el turno). */
 export async function autoCloseStaleShifts(): Promise<number> {
@@ -55,6 +56,8 @@ export function startJobs(log: { error: (o: unknown, msg?: string) => void }): (
     setInterval(safe('depuración', purgeOldActivity), 6 * 3600_000),
     setInterval(safe('alarmas', evaluateAlarms), 60_000),
     setInterval(safe('recordatorios de Hermes', runReminders), 60_000),
+    setInterval(safe('cola de envíos de Hermes', deliverQueued), 5_000),
+    setInterval(safe('consulta de mensajes de Hermes', pollInbound), 60_000),
   ];
   setTimeout(safe('cierre automático', autoCloseStaleShifts), 5_000);
   setTimeout(safe('depuración', purgeOldActivity), 15_000);

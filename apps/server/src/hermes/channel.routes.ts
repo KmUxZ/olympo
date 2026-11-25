@@ -8,12 +8,13 @@ import { newToken } from '../core/security.ts';
 import { publicUrl } from '../argos/extension.routes.ts';
 import * as bot from './bot.ts';
 import * as pancake from './pancake.ts';
+import { ingestConversation, pollCompany } from './inbound.ts';
 
 const KNOWN = new Set(bot.TEMPLATES.map((t) => t.key));
 const REQUIRED = bot.TEMPLATES.filter((t) => t.required);
 
 async function view(companyId: string) {
-  const { rows } = await db.query(`SELECT driver, pancake_page_id, pancake_token IS NOT NULL AS has_token, webhook_key, templates FROM hermes_settings WHERE company_id = $1`, [companyId]);
+  const { rows } = await db.query(`SELECT driver, pancake_page_id, pancake_token IS NOT NULL AS has_token, webhook_key, templates, poll_at, poll_status FROM hermes_settings WHERE company_id = $1`, [companyId]);
   const r = rows[0];
   const templates: Record<string, string> = r?.templates ?? {};
   const missing = [
@@ -27,17 +28,10 @@ async function view(companyId: string) {
     webhookUrl: r?.webhook_key ? `${publicUrl()}/api/hermes/webhook/pancake/${r.webhook_key}` : null,
     templates,
     missing,
+    poll: { at: (r?.poll_at as Date | null) ?? null, status: (r?.poll_status as string) ?? '' },
+    queued: Number((await db.query(`SELECT count(*)::int AS n FROM hermes_messages WHERE company_id = $1 AND status = 'en_cola'`, [companyId])).rows[0].n),
     catalog: bot.TEMPLATES.map(({ sample: _s, ...t }) => t),
   };
-}
-
-// Un cliente que escribe dos mensajes seguidos: el segundo espera a que termine el primero.
-const queues = new Map<string, Promise<unknown>>();
-function inOrder<T>(key: string, task: () => Promise<T>): Promise<T> {
-  const run = (queues.get(key) ?? Promise.resolve()).then(task, task);
-  queues.set(key, run);
-  void run.finally(() => queues.get(key) === run && queues.delete(key)).catch(() => {});
-  return run;
 }
 
 export function channelRoutes(app: FastifyInstance): void {
@@ -79,7 +73,15 @@ export function channelRoutes(app: FastifyInstance): void {
       const v = await view(ctx.companyId);
       if (v.missing.length) throw badRequest(`Antes de activar falta: ${v.missing.join('; ')}.`, 'canal_incompleto');
     }
-    await db.query(`INSERT INTO hermes_settings (company_id, driver) VALUES ($1, $2) ON CONFLICT (company_id) DO UPDATE SET driver = EXCLUDED.driver`, [ctx.companyId, b.active ? 'pancake' : 'simulado']);
+    // Al activar se anota el momento: los mensajes anteriores son historia de esa conversación y no se procesan.
+    await db.query(
+      `INSERT INTO hermes_settings (company_id, driver) VALUES ($1, $2)
+       ON CONFLICT (company_id) DO UPDATE SET driver = EXCLUDED.driver,
+         channel_since = CASE WHEN $3 THEN now() ELSE hermes_settings.channel_since END,
+         poll_cursor = CASE WHEN $3 THEN now() ELSE hermes_settings.poll_cursor END,
+         poll_status = CASE WHEN $3 THEN '' ELSE hermes_settings.poll_status END`,
+      [ctx.companyId, b.active ? 'pancake' : 'simulado', b.active],
+    );
     await auditBy(ctx, { action: b.active ? 'hermes.canal_activado' : 'hermes.canal_desactivado', entityType: 'empresa', entityId: ctx.companyId, summary: b.active ? 'Activó el envío real por WhatsApp en Hermes' : 'Volvió Hermes al modo simulado' });
     return view(ctx.companyId);
   });
@@ -100,6 +102,13 @@ export function channelRoutes(app: FastifyInstance): void {
     await auditBy(ctx, { action: 'hermes.canal_prueba', entityType: 'empresa', entityId: ctx.companyId, summary: `Envió una prueba de la plantilla «${t.title}» (${res.ok ? 'enviada' : 'falló'})`, metadata: { plantilla: t.key, terminaEn: phone.slice(-4) } });
     if (!res.ok) throw badRequest(`${res.error}. Revisa que el identificador sea el de la plantilla aprobada y que sus variables se llamen igual que en el texto.`, 'prueba_fallida');
     return { ok: true, preview: bot.renderTemplate(t.key, t.sample) };
+  });
+
+  /** Consulta ahora mismo si hay mensajes nuevos, sin esperar a la tarea de cada minuto. */
+  app.post('/api/hermes/channel/poll', guard('admin', 'supervisor'), async (req) => {
+    const res = await pollCompany(req.ctx.companyId);
+    if (!res.mode) throw badRequest(res.error, 'canal_inactivo');
+    return res;
   });
 
   app.delete('/api/hermes/channel', guard('admin'), async (req) => {
@@ -134,31 +143,17 @@ export function channelRoutes(app: FastifyInstance): void {
     return { ok: true };
   });
 
+  /** Del aviso solo se usa de qué conversación es: los mensajes se leen de la API de Pancake, que es la fuente de confianza. */
   async function processEvent(company: { company_id: string; driver: string; pancake_page_id: string }, event: any): Promise<void> {
     if (company.driver !== 'pancake' || event?.event_type !== 'messaging') return;
     const msg = event?.data?.message;
     const conv = event?.data?.conversation;
-    if (!msg?.id || String(event.page_id ?? msg.page_id ?? '') !== company.pancake_page_id) return;
-    if ((msg.type ?? conv?.type ?? 'INBOX') !== 'INBOX') return;
-    const conversation = String(msg.conversation_id ?? conv?.id ?? '');
-    const phone = pancake.phoneOf(conversation);
+    if (String(event.page_id ?? msg?.page_id ?? '') !== company.pancake_page_id) return;
+    if ((msg?.type ?? conv?.type ?? 'INBOX') !== 'INBOX') return;
+    const phone = pancake.phoneOf(String(msg?.conversation_id ?? conv?.id ?? ''));
     if (!phone) return;
-    const externalId = String(msg.id).slice(0, 200);
-
-    await inOrder(`${company.company_id}|${phone}`, async () => {
-      const seen = await db.query(`SELECT 1 FROM hermes_messages WHERE company_id = $1 AND external_id = $2`, [company.company_id, externalId]);
-      if (seen.rows.length) return; // ya procesado (Pancake puede repetir avisos) o es un mensaje que envió Hermes
-      const ch = await bot.channelOf(company.company_id);
-      if (!ch.channel) return;
-      const checked = await pancake.verifyMessage(ch.channel, conversation, externalId);
-      const raw = typeof msg.original_message === 'string' && msg.original_message ? msg.original_message : typeof msg.message === 'string' ? msg.message : '';
-      const text = (checked.text ?? raw).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 1000) || (Array.isArray(msg.attachments) && msg.attachments.length ? '[Archivo adjunto]' : '');
-      if (!text) return;
-      if (checked.sender === 'equipo') {
-        if (checked.staffName) await bot.recordStaffMessage(company.company_id, phone, text, checked.staffName, externalId);
-        return;
-      }
-      await bot.handleInbound(company.company_id, phone, { text, payload: bot.payloadOfLabel(text) }, { externalId, observeOnly: checked.sender === 'desconocido' });
-    });
+    const ch = await bot.channelOf(company.company_id);
+    const since = (await db.query(`SELECT channel_since FROM hermes_settings WHERE company_id = $1`, [company.company_id])).rows[0]?.channel_since as Date | null;
+    if (ch.channel) await ingestConversation(company.company_id, ch.channel, phone, since ?? new Date());
   }
 }
