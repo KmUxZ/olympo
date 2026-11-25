@@ -45,7 +45,7 @@ export function Users() {
       <div className="card">
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Nombre</th><th>Rol</th><th>Equipo · Supervisor</th><th>Línea</th><th>Turno programado</th><th>Estado</th><th></th></tr></thead>
+            <thead><tr><th>Nombre</th><th>Rol</th><th>Equipo · Supervisor</th><th>Línea</th><th>Horario fijo</th><th>Estado</th><th></th></tr></thead>
             <tbody>
               {users.data.users.map((u) => (
                 <tr key={u.id}>

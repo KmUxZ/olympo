@@ -19,12 +19,13 @@ export function ScheduleFields({ value, onChange }: { value: ScheduleValue; onCh
     onChange({ ...value, weekdays: value.weekdays.includes(day) ? value.weekdays.filter((d) => d !== day) : [...value.weekdays, day].sort() });
   return (
     <fieldset className="stack" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-3)' }}>
-      <legend className="small muted">Turno programado</legend>
+      <legend className="small muted">Horario fijo (opcional)</legend>
       <div className="checks">
         <label>
-          <input type="checkbox" checked={value.enabled} onChange={(e) => onChange({ ...value, enabled: e.target.checked })} /> Tiene turno programado
+          <input type="checkbox" checked={value.enabled} onChange={(e) => onChange({ ...value, enabled: e.target.checked })} /> Tiene un horario fijo todas las semanas
         </label>
       </div>
+      <span className="small muted">Si subes la malla de turnos, déjalo sin marcar: la malla es la que manda. Sirve solo para quien trabaja siempre los mismos días y horas.</span>
       {value.enabled && (
         <>
           <div className="checks" role="group" aria-label="Días">
