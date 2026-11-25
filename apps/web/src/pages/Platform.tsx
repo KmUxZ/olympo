@@ -6,15 +6,15 @@ import { Badge, Empty, ErrorNote, Field, FormModal, Freshness, Loading, Modal, P
 import { PRODUCT_INFO } from '../components/brand';
 
 /** Casillas de los productos que la empresa tiene contratados. */
-function ProductFields({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+function ProductFields({ value, onChange, own = false }: { value: string[]; onChange: (v: string[]) => void; /** es la propia empresa de la plataforma: puede tener también los productos en pausa */ own?: boolean }) {
   return (
     <fieldset className="stack" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-3)' }}>
       <legend className="small muted">Productos contratados</legend>
       <div className="checks">
         {Object.entries(PRODUCT_INFO).map(([key, p]) => (
-          <label key={key} style={p.available && !p.internal ? undefined : { opacity: 0.55 }}>
-            <input type="checkbox" disabled={!p.available || Boolean(p.internal)} checked={value.includes(key)} onChange={(e) => onChange(e.target.checked ? [...value, key] : value.filter((x) => x !== key))} />
-            {p.name} · {p.tagline}{!p.available ? ' (próximamente)' : p.internal ? ' (en pausa, uso interno)' : ''}
+          <label key={key} style={p.available && (!p.internal || own) ? undefined : { opacity: 0.55 }}>
+            <input type="checkbox" disabled={!p.available || (Boolean(p.internal) && !own)} checked={value.includes(key)} onChange={(e) => onChange(e.target.checked ? [...value, key] : value.filter((x) => x !== key))} />
+            {p.name} · {p.tagline}{!p.available ? ' (próximamente)' : p.internal ? (own ? ' (uso interno: solo tu empresa)' : ' (en pausa, uso interno)') : ''}
           </label>
         ))}
       </div>
@@ -200,6 +200,7 @@ function CreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: (c: {
 }
 
 function ManageModal({ company, onClose, onSaved, onResetAdmin }: { company: Company; onClose: () => void; onSaved: () => Promise<void>; onResetAdmin: (a: { id: string; name: string }) => void }) {
+  const { me } = useAuth();
   const [name, setName] = useState(company.name);
   const [suspended, setSuspended] = useState(company.status === 'suspended');
   const [reason, setReason] = useState(company.suspendedReason);
@@ -213,7 +214,7 @@ function ManageModal({ company, onClose, onSaved, onResetAdmin }: { company: Com
   return (
     <FormModal title={`Gestionar · ${company.name}`} onClose={onClose} onSubmit={save}>
       <Field label="Nombre de la empresa"><input required minLength={2} value={name} onChange={(e) => setName(e.target.value)} /></Field>
-      <ProductFields value={products} onChange={setProducts} />
+      <ProductFields value={products} onChange={setProducts} own={company.id === me?.company.id} />
       <LimitFields {...limits} onChange={(k, v) => setLimits({ ...limits, [k]: v })} />
       <fieldset className="stack" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-3)' }}>
         <legend className="small muted">Estado</legend>

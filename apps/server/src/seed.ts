@@ -23,9 +23,11 @@ async function createUser(companyId: string, name: string, email: string, role: 
 
 if (values.plataforma) {
   // Da (o confirma) el rol de plataforma a una cuenta existente:  npm run seed -- --plataforma correo@ejemplo.com
-  const { rows } = await db.query(`UPDATE core_users SET is_platform_admin = true WHERE lower(email) = $1 RETURNING name`, [values.plataforma.toLowerCase()]);
+  const { rows } = await db.query(`UPDATE core_users SET is_platform_admin = true WHERE lower(email) = $1 RETURNING name, company_id`, [values.plataforma.toLowerCase()]);
+  // Quien opera la plataforma tiene en su empresa todos los productos, incluidos los que están en pausa para el público.
+  if (rows.length) await db.query(`UPDATE core_companies SET products = '["argos", "hermes", "zeus", "athena"]'::jsonb WHERE id = $1`, [rows[0].company_id]);
   console.log(rows.length ? `
-${rows[0].name} ahora opera la plataforma OLYMPO (verá «Empresas» en el menú).
+${rows[0].name} ahora opera la plataforma OLYMPO (verá «Empresas» en el menú) y su empresa tiene todos los productos activos.
 ` : `
 No existe ninguna cuenta con el correo ${values.plataforma}.
 `);
