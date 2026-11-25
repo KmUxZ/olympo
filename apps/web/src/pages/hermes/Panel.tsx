@@ -5,6 +5,7 @@ import { api, useApi } from '../../lib/api';
 import { fmtMinutes } from '../../lib/format';
 import { Badge, Empty, ErrorNote, Field, Loading, PageHero } from '../../components/ui';
 import { money } from './shared';
+import { ChannelCard } from './Channel';
 
 interface Agg { name?: string; total: number; confirmed: number; dispatched: number; delivered: number; returned: number; cancelled: number; deliveredValue: number }
 interface PanelData { days: number; totals: Agg & { pending: number; attention: number }; bySeller: Agg[]; byCity: Agg[]; byCarrier: Agg[]; byIncident: { type: string; label: string; total: number; resolved: number; returned: number }[]; messages: { sent: number; received: number }; minutesToConfirm: number | null }
@@ -83,6 +84,7 @@ export function HermesPanel() {
       )}
 
       <SettingsCard />
+      <AdminChannel />
     </>
   );
 }
@@ -120,6 +122,12 @@ function RateTable({ title, note, first, rows, compact }: { title: string; note?
       ) : <Empty>Sin datos todavía.</Empty>}
     </div>
   );
+}
+
+/** La conexión del canal lleva un token: solo la ve el administrador. */
+function AdminChannel() {
+  const { me } = useAuth();
+  return me?.user.role === 'admin' ? <ChannelCard /> : null;
 }
 
 function SettingsCard() {
@@ -161,7 +169,7 @@ function SettingsCard() {
         {settings.data?.settings.driver === 'simulado' && (
           <div className="alert info">
             Hermes está en <strong>modo simulado</strong>: recorre todo el proceso y guarda los mensajes, pero no envía nada al cliente. Sirve para probar.
-            Para enviar de verdad hay que conectar el número de WhatsApp de logística y tener las plantillas aprobadas por Meta.
+            Para enviar de verdad, conecta el WhatsApp en «WhatsApp por Pancake», más abajo.
           </div>
         )}
         <ErrorNote error={error ?? settings.error} />

@@ -1,7 +1,9 @@
 // Hermes · motor del bot. Lleva cada pedido desde la confirmación hasta la entrega o la devolución.
 // Toda la conversación pasa por aquí: lo que envía el bot, lo que responde el cliente y cuándo debe intervenir una persona.
 import { db } from '../db/db.ts';
+import { decryptSecret } from '../core/secrets.ts';
 import { checkAddress } from './address.ts';
+import * as pancake from './pancake.ts';
 
 export const FINAL_STATUSES = ['entregado', 'devuelto', 'cancelado'];
 export const INCIDENT_LABEL: Record<string, string> = {
@@ -33,6 +35,7 @@ export interface Order {
   reminders_sent: number;
   last_outbound_at: Date | null;
   created_at: Date;
+  last_inbound_at?: Date | null;
   address_check?: { missing?: string[] } | null;
 }
 
@@ -40,6 +43,8 @@ interface Outgoing {
   template: string;
   body: string;
   buttons?: { label: string; payload: string }[];
+  /** Variables de la plantilla de WhatsApp. Solo las tienen los avisos que pueden salir sin que el cliente haya escrito antes. */
+  params?: Record<string, string>;
 }
 
 const money = (n: number) => `$${n.toLocaleString('es-CO')}`;
@@ -53,6 +58,80 @@ const missingLine = (o: Order) => {
 };
 const payLine = (o: Order) => (o.payment === 'pagado' ? 'Tu pedido ya está pago.' : `Total a pagar al recibir: ${money(o.total)}.`);
 
+/** Una variable de plantilla no admite saltos de línea ni espacios repetidos. */
+const v = (text: string, max = 300) => text.replace(/\s+/g, ' ').trim().slice(0, max) || '-';
+const payVar = (o: Order) => (o.payment === 'pagado' ? 'Tu pedido ya está pago' : `Total a pagar al recibir: ${money(o.total)}`);
+const deliveryVar = (o: Order) => (o.payment === 'pagado' ? 'Ya está pago, solo debes recibirlo' : `Ten listos ${money(o.total)} para recibirlo`);
+const INCIDENT_REASON: Record<string, string> = {
+  direccion: 'la transportadora no pudo ubicar la dirección',
+  ausente: 'la transportadora pasó a entregarlo y no encontró a nadie',
+  rehusado: 'la transportadora informa que el pedido no fue recibido',
+  telefono: 'la transportadora no logró comunicarse contigo',
+  zona: 'la transportadora tiene dificultades para llegar a la dirección',
+  otro: 'la transportadora reportó un inconveniente',
+};
+
+/**
+ * Plantillas que deben existir aprobadas en WhatsApp para poder escribirle a un cliente que no ha escrito en las últimas 24 horas.
+ * El texto de aquí es el que se registra en Meta, con las variables por nombre. Las obligatorias son las que hacen avanzar el pedido.
+ */
+export const TEMPLATES: { key: string; title: string; required: boolean; when: string; text: string; buttons: string[]; sample: Record<string, string> }[] = [
+  {
+    key: 'hermes_confirmacion', title: 'Confirmación del pedido', required: true, when: 'Al crear el pedido.',
+    text: 'Hola {{customer_name}}, recibimos tu pedido {{order_code}} en {{company}}: {{items}}. {{payment}}. Lo enviaremos a: {{address}}. ¿Confirmas tu pedido?',
+    buttons: ['Confirmar pedido', 'Corregir datos', 'Cancelar'],
+    sample: { customer_name: 'Laura', order_code: 'H-000123', company: 'Mi Tienda', items: '2 fajas talla M', payment: 'Total a pagar al recibir: $120.000', address: 'Calle 10 # 5-20, barrio Centro, Cali' },
+  },
+  {
+    key: 'hermes_recordatorio', title: 'Recordatorio de confirmación', required: true, when: 'Si el cliente no responde la confirmación.',
+    text: 'Hola {{customer_name}}, tu pedido {{order_code}} sigue pendiente de confirmación. Solo lo despachamos cuando nos confirmas. ¿Lo enviamos a {{address}}?',
+    buttons: ['Confirmar pedido', 'Corregir datos', 'Cancelar'],
+    sample: { customer_name: 'Laura', order_code: 'H-000123', address: 'Calle 10 # 5-20, barrio Centro, Cali' },
+  },
+  {
+    key: 'hermes_guia', title: 'Pedido despachado', required: true, when: 'Al despachar, con la guía.',
+    text: 'Tu pedido {{order_code}} ya fue despachado con {{carrier}}. Número de guía: {{tracking_number}}. Te avisaremos cuando salga a reparto.',
+    buttons: [],
+    sample: { order_code: 'H-000123', carrier: 'Interrapidísimo', tracking_number: '240012345678' },
+  },
+  {
+    key: 'hermes_novedad', title: 'Novedad de entrega', required: true, when: 'Cuando la transportadora reporta un problema.',
+    text: 'Hola {{customer_name}}, hubo una novedad con la entrega de tu pedido {{order_code}}: {{reason}}. ¿Cómo quieres que lo resolvamos?',
+    buttons: ['Reprogramar entrega', 'Corregir dirección', 'Ya no lo quiero'],
+    sample: { customer_name: 'Laura', order_code: 'H-000123', reason: 'la transportadora pasó a entregarlo y no encontró a nadie' },
+  },
+  {
+    key: 'hermes_en_reparto', title: 'Sale a reparto', required: false, when: 'El día que el pedido sale a reparto.',
+    text: 'Hola {{customer_name}}, tu pedido {{order_code}} sale a reparto hoy. {{payment}}. Gracias por estar pendiente.',
+    buttons: [],
+    sample: { customer_name: 'Laura', order_code: 'H-000123', payment: 'Ten listos $120.000 para recibirlo' },
+  },
+  {
+    key: 'hermes_entregado', title: 'Pedido entregado', required: false, when: 'Al marcar el pedido como entregado.',
+    text: 'Hola {{customer_name}}, tu pedido {{order_code}} fue entregado. Gracias por tu compra.',
+    buttons: [],
+    sample: { customer_name: 'Laura', order_code: 'H-000123' },
+  },
+  {
+    key: 'hermes_confirmado', title: 'Pedido confirmado', required: false, when: 'Cuando una persona del equipo confirma el pedido a mano.',
+    text: 'Listo, {{customer_name}}. Tu pedido {{order_code}} quedó confirmado. Te avisaremos por aquí cuando lo despachemos.',
+    buttons: [],
+    sample: { customer_name: 'Laura', order_code: 'H-000123' },
+  },
+  {
+    key: 'hermes_cancelado', title: 'Pedido cancelado', required: false, when: 'Cuando una persona del equipo cancela el pedido.',
+    text: 'Hola {{customer_name}}, tu pedido {{order_code}} quedó cancelado. Si fue un error, respóndenos y lo revisamos.',
+    buttons: [],
+    sample: { customer_name: 'Laura', order_code: 'H-000123' },
+  },
+];
+
+/** El texto que el cliente recibe cuando el aviso sale como plantilla. */
+export function renderTemplate(key: string, params: Record<string, string>): string {
+  const t = TEMPLATES.find((x) => x.key === key);
+  return t ? t.text.replace(/\{\{(\w+)\}\}/g, (_m, name: string) => params[name] ?? '') : '';
+}
+
 // Textos de los mensajes. Para envío real por WhatsApp, cada uno debe existir como plantilla aprobada por Meta
 // con este mismo contenido (la clave `template` es el nombre de la plantilla).
 const CONFIRM_BUTTONS = [
@@ -65,11 +144,13 @@ export const MESSAGES = {
     template: 'hermes_confirmacion',
     body: `Hola ${firstName(o.customer_name)}, recibimos tu pedido ${o.code} en ${company}: ${itemsText(o)}. ${payLine(o)}\nLo enviaremos a: ${o.address}, ${o.city}${o.notes ? ` (${o.notes})` : ''}.${missingLine(o)}\n¿Confirmas tu pedido?`,
     buttons: CONFIRM_BUTTONS,
+    params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code, company: v(company, 80), items: v(itemsText(o)), payment: payVar(o), address: v(`${o.address}, ${o.city}`) },
   }),
   recordatorio: (o: Order): Outgoing => ({
     template: 'hermes_recordatorio',
     body: `Hola ${firstName(o.customer_name)}, tu pedido ${o.code} sigue pendiente de confirmación. Solo lo despachamos cuando nos confirmas. ¿Lo enviamos a ${o.address}, ${o.city}?`,
     buttons: CONFIRM_BUTTONS,
+    params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code, address: v(`${o.address}, ${o.city}`) },
   }),
   datos_actualizados: (o: Order): Outgoing => ({
     template: 'hermes_datos_actualizados',
@@ -81,18 +162,21 @@ export const MESSAGES = {
     template: 'hermes_direccion_incompleta',
     body: `Gracias. Para poder despachar aún nos falta ${missing.join(' y ') || 'completar la dirección'}. Escríbela completa así: Calle 10 # 5-20, barrio Centro, apto 201.`,
   }),
-  confirmado: (o: Order): Outgoing => ({ template: 'hermes_confirmado', body: `¡Listo, ${firstName(o.customer_name)}! Tu pedido ${o.code} quedó confirmado. Te avisaremos por aquí cuando lo despachemos.` }),
-  cancelado: (o: Order): Outgoing => ({ template: 'hermes_cancelado', body: `Tu pedido ${o.code} quedó cancelado. Si fue un error, respóndenos y lo revisamos.` }),
+  confirmado: (o: Order): Outgoing => ({ template: 'hermes_confirmado', body: `¡Listo, ${firstName(o.customer_name)}! Tu pedido ${o.code} quedó confirmado. Te avisaremos por aquí cuando lo despachemos.`, params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code } }),
+  cancelado: (o: Order): Outgoing => ({ template: 'hermes_cancelado', body: `Tu pedido ${o.code} quedó cancelado. Si fue un error, respóndenos y lo revisamos.`, params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code } }),
   guia: (o: Order): Outgoing => ({
     template: 'hermes_guia',
     body: `Tu pedido ${o.code} ya fue despachado${o.carrier ? ` con ${o.carrier}` : ''}. Número de guía: ${o.tracking_number}.${o.tracking_url ? ` Puedes rastrearlo aquí: ${o.tracking_url}` : ''}`,
+    params: { order_code: o.code, carrier: v(o.carrier || 'la transportadora', 60), tracking_number: v(o.tracking_number, 60) },
   }),
   en_reparto: (o: Order): Outgoing => ({
     template: 'hermes_en_reparto',
     body: `${firstName(o.customer_name)}, tu pedido ${o.code} sale a reparto hoy. ${o.payment === 'pagado' ? 'Ten a alguien pendiente para recibirlo.' : `Ten listos ${money(o.total)} para recibirlo.`}`,
+    params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code, payment: deliveryVar(o) },
   }),
   novedad: (o: Order, type: string): Outgoing => ({
-    template: `hermes_novedad_${type}`,
+    template: 'hermes_novedad',
+    params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code, reason: INCIDENT_REASON[type] ?? INCIDENT_REASON.otro },
     body:
       {
         direccion: `La transportadora no pudo ubicar la dirección de tu pedido ${o.code} (${o.address}, ${o.city}).`,
@@ -110,7 +194,7 @@ export const MESSAGES = {
   }),
   novedad_recibida: (): Outgoing => ({ template: 'hermes_novedad_recibida', body: 'Gracias. Ya le informamos a la transportadora y te avisaremos cuando salga de nuevo a reparto.' }),
   novedad_rechazo: (): Outgoing => ({ template: 'hermes_novedad_rechazo', body: 'Entendido. Una persona de nuestro equipo te escribirá en breve.' }),
-  entregado: (o: Order): Outgoing => ({ template: 'hermes_entregado', body: `¡Tu pedido ${o.code} fue entregado! Gracias por tu compra, ${firstName(o.customer_name)}.` }),
+  entregado: (o: Order): Outgoing => ({ template: 'hermes_entregado', body: `¡Tu pedido ${o.code} fue entregado! Gracias por tu compra, ${firstName(o.customer_name)}.`, params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code } }),
   humano: (): Outgoing => ({ template: 'hermes_humano', body: 'Gracias por tu mensaje. Una persona de nuestro equipo te responderá en breve.' }),
 };
 
@@ -155,20 +239,92 @@ export async function setBotPaused(o: Order, paused: boolean, actor: string): Pr
   await logEvent(o, paused ? 'bot_pausado' : 'bot_reanudado', paused ? `${actor} tomó la conversación` : 'La conversación volvió al bot', actor);
 }
 
+/** Canal de WhatsApp de la empresa: modo, página de Pancake con su token y las plantillas aprobadas. */
+export async function channelOf(companyId: string): Promise<{ driver: string; channel: pancake.Channel | null; templates: Record<string, string> }> {
+  const { rows } = await db.query(`SELECT driver, pancake_page_id, pancake_token, templates FROM hermes_settings WHERE company_id = $1`, [companyId]);
+  const r = rows[0];
+  let token = '';
+  try {
+    token = r?.pancake_token ? decryptSecret(r.pancake_token) : '';
+  } catch {
+    token = ''; // la clave de cifrado cambió: hay que volver a pegar el token
+  }
+  return { driver: r?.driver ?? 'simulado', channel: r?.pancake_page_id && token ? { pageId: r.pancake_page_id, token } : null, templates: r?.templates ?? {} };
+}
+
+/** Botones que el bot ofrece. En WhatsApp, pulsar uno llega como un mensaje con su texto. */
+const BUTTON_PAYLOADS: Record<string, string> = {};
+const plainLabel = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+/** Si el texto recibido es exactamente el de un botón, devuelve su código. */
+for (const b of [...CONFIRM_BUTTONS, ...(MESSAGES.novedad({ code: '', customer_name: '' } as Order, 'otro').buttons ?? [])]) BUTTON_PAYLOADS[plainLabel(b.label)] = b.payload;
+export const payloadOfLabel = (text: string): string | undefined => BUTTON_PAYLOADS[plainLabel(text)];
+
+// WhatsApp deja escribir texto libre solo durante 24 horas desde el último mensaje del cliente. Se deja una hora de margen.
+const WINDOW_MS = 23 * 3600_000;
+const withOptions = (msg: Outgoing) => (msg.buttons?.length ? `${msg.body}\n\nResponde con una de estas opciones: ${msg.buttons.map((b) => b.label).join(' · ')}` : msg.body);
+
 /**
  * Envía un mensaje al cliente con el canal configurado.
  * En modo simulado solo queda registrado: sirve para probar todo el recorrido sin costo ni mensajes reales.
+ * Por WhatsApp: dentro de las 24 horas desde el último mensaje del cliente va como texto; fuera de ellas, como plantilla aprobada.
  */
-export async function send(o: Order, msg: Outgoing, sender = 'Hermes'): Promise<void> {
-  const { driver } = await settingsOf(o.company_id);
-  // El envío real (driver 'pancake') se conecta aquí cuando se configure el número de logística.
-  const status = driver === 'simulado' ? 'simulado' : 'pendiente_de_canal';
+export async function send(o: Order, msg: Outgoing, sender = 'Hermes'): Promise<{ ok: boolean; error: string }> {
+  const ch = await channelOf(o.company_id);
+  let status = 'simulado';
+  let kind = msg.template ? 'plantilla' : 'texto';
+  let body = msg.body;
+  let externalId: string | null = null;
+  let error = '';
+  if (ch.driver !== 'simulado') {
+    const windowOpen = Boolean(o.last_inbound_at) && Date.now() - new Date(o.last_inbound_at!).getTime() < WINDOW_MS;
+    const templateId = msg.params ? ch.templates[msg.template] : undefined;
+    if (!ch.channel) {
+      status = 'fallido';
+      error = 'El canal de WhatsApp no está conectado';
+    } else if (windowOpen) {
+      kind = 'texto';
+      body = withOptions(msg);
+      const res = await pancake.sendText(ch.channel, o.phone, body);
+      status = res.ok ? 'enviado' : 'fallido';
+      externalId = res.id ?? null;
+      error = res.error ?? '';
+    } else if (templateId && msg.params) {
+      kind = 'plantilla';
+      body = renderTemplate(msg.template, msg.params);
+      const res = await pancake.sendTemplate(ch.channel, o.phone, templateId, msg.params);
+      status = res.ok ? 'enviado' : 'fallido';
+      externalId = res.id ?? null;
+      error = res.error ?? '';
+    } else if (msg.params && !TEMPLATES.find((t) => t.key === msg.template)?.required) {
+      // Aviso de cortesía sin plantilla: no se envía y no es motivo para molestar a nadie.
+      status = 'omitido';
+      error = 'No se envió: el cliente no ha escrito en las últimas 24 horas y este aviso no tiene plantilla configurada';
+    } else {
+      status = 'fallido';
+      error = 'el cliente no ha escrito en las últimas 24 horas y no hay una plantilla aprobada para este mensaje';
+    }
+  }
   await db.query(
-    `INSERT INTO hermes_messages (company_id, order_id, phone, direction, kind, template, body, buttons, status, sender)
-     VALUES ($1, $2, $3, 'out', $4, $5, $6, $7::jsonb, $8, $9)`,
-    [o.company_id, o.id, o.phone, msg.template ? 'plantilla' : 'texto', msg.template, msg.body, JSON.stringify(msg.buttons ?? []), status, sender],
+    `INSERT INTO hermes_messages (company_id, order_id, phone, direction, kind, template, body, buttons, status, sender, external_id, error)
+     VALUES ($1, $2, $3, 'out', $4, $5, $6, $7::jsonb, $8, $9, $10, $11)
+     ON CONFLICT (company_id, external_id) WHERE external_id IS NOT NULL DO NOTHING`,
+    [o.company_id, o.id, o.phone, kind, msg.template, body, JSON.stringify(msg.buttons ?? []), status, sender, externalId, error],
   );
   await patch(o, { last_outbound_at: new Date().toISOString() });
+  if (status === 'fallido') await setAttention(o, `No se pudo enviar un mensaje por WhatsApp: ${error}`);
+  return { ok: status !== 'fallido', error };
+}
+
+/** Alguien del equipo le escribió al cliente desde Pancake: queda en la conversación del pedido. */
+export async function recordStaffMessage(companyId: string, rawPhone: string, body: string, name: string, externalId: string): Promise<void> {
+  const phone = normalizePhone(rawPhone);
+  const { rows } = await db.query(`SELECT id FROM hermes_orders WHERE company_id = $1 AND phone = $2 ORDER BY (status IN ('entregado', 'devuelto', 'cancelado')), created_at DESC LIMIT 1`, [companyId, phone]);
+  if (!rows[0]) return;
+  await db.query(
+    `INSERT INTO hermes_messages (company_id, order_id, phone, direction, kind, body, status, sender, external_id) VALUES ($1, $2, $3, 'out', 'texto', $4, 'enviado', $5, $6)
+     ON CONFLICT (company_id, external_id) WHERE external_id IS NOT NULL DO NOTHING`,
+    [companyId, rows[0].id, phone, body, `${name} (desde Pancake)`, externalId],
+  );
 }
 
 async function companyName(companyId: string): Promise<string> {
@@ -242,7 +398,13 @@ const NO = /^(no|cancelar|cancela|cancelo|ya no|no lo quiero)\b/i;
  * Procesa un mensaje entrante. `payload` es el botón pulsado (si lo hubo); `text`, lo que escribió.
  * Regla general: el bot solo resuelve lo que entiende sin ambigüedad; lo demás pasa a una persona.
  */
-export async function handleInbound(companyId: string, rawPhone: string, input: { text?: string; payload?: string }): Promise<{ orderId: string | null }> {
+export async function handleInbound(
+  companyId: string,
+  rawPhone: string,
+  input: { text?: string; payload?: string },
+  /** `observeOnly`: el mensaje no se pudo comprobar con el canal; se guarda y se avisa a una persona, pero el bot no actúa. */
+  opts: { externalId?: string; observeOnly?: boolean } = {},
+): Promise<{ orderId: string | null }> {
   const phone = normalizePhone(rawPhone);
   const text = (input.text ?? '').trim();
   // Lo que el cliente escribió a mano. Si pulsó un botón, `text` es solo la etiqueta del botón y no cuenta como texto libre.
@@ -253,11 +415,16 @@ export async function handleInbound(companyId: string, rawPhone: string, input: 
   );
   const o: Order | undefined = rows[0];
   await db.query(
-    `INSERT INTO hermes_messages (company_id, order_id, phone, direction, kind, body, status, sender) VALUES ($1, $2, $3, 'in', $4, $5, 'recibido', 'Cliente')`,
-    [companyId, o?.id ?? null, phone, input.payload ? 'boton' : 'texto', text || input.payload || ''],
+    `INSERT INTO hermes_messages (company_id, order_id, phone, direction, kind, body, status, sender, external_id) VALUES ($1, $2, $3, 'in', $4, $5, 'recibido', 'Cliente', $6)`,
+    [companyId, o?.id ?? null, phone, input.payload ? 'boton' : 'texto', text || input.payload || '', opts.externalId ?? null],
   );
   if (!o) return { orderId: null };
+  if (opts.observeOnly) {
+    await setAttention(o, 'Llegó un mensaje del cliente que no se pudo comprobar con Pancake: revísalo y respóndele');
+    return { orderId: o.id };
+  }
   await db.query(`UPDATE hermes_orders SET last_inbound_at = now() WHERE id = $1`, [o.id]);
+  o.last_inbound_at = new Date();
   // Si una persona tomó la conversación, el bot no interviene: solo avisa de que hay un mensaje nuevo.
   if ((o as Order & { bot_paused?: boolean }).bot_paused) {
     await setAttention(o, 'El cliente escribió (conversación a cargo de una persona)');

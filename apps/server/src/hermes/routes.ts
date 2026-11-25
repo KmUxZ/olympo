@@ -285,7 +285,7 @@ export function hermesRoutes(app: FastifyInstance): void {
     const [order, events, messages, incidents, settings] = await Promise.all([
       db.query(`SELECT ${ORDER_COLUMNS} FROM hermes_orders o LEFT JOIN core_users u ON u.id = o.seller_user_id WHERE o.id = $1`, [id]),
       db.query(`SELECT id, at, type, detail, actor FROM hermes_events WHERE order_id = $1 ORDER BY at`, [id]),
-      db.query(`SELECT id, direction, kind, template, body, buttons, status, sender, created_at AS "createdAt" FROM hermes_messages WHERE order_id = $1 ORDER BY created_at`, [id]),
+      db.query(`SELECT id, direction, kind, template, body, buttons, status, sender, error, created_at AS "createdAt" FROM hermes_messages WHERE order_id = $1 ORDER BY created_at`, [id]),
       db.query(`SELECT id, type, description, status, customer_choice AS "customerChoice", resolution, created_at AS "createdAt", resolved_at AS "resolvedAt" FROM hermes_incidents WHERE order_id = $1 ORDER BY created_at`, [id]),
       bot.settingsOf(req.ctx.companyId),
     ]);
@@ -404,7 +404,8 @@ export function hermesRoutes(app: FastifyInstance): void {
     const { id } = parse(idParam, req.params);
     const b = parse(z.object({ body: z.string().trim().min(1).max(1000) }), req.body);
     const o = await loadOrder(req.ctx, id);
-    await bot.send(o, { template: '', body: b.body }, req.ctx.name);
+    const sent = await bot.send(o, { template: '', body: b.body }, req.ctx.name);
+    if (!sent.ok) throw badRequest(`No se pudo enviar: ${sent.error}. Puedes llamarlo o esperar a que escriba.`, 'no_enviado');
     // Al responder una persona, el caso deja de estar pendiente: ahora se espera al cliente.
     await db.query(`UPDATE hermes_orders SET attention = false, attention_reason = '', seen_at = now(), updated_at = now() WHERE id = $1`, [id]);
     return { ok: true };

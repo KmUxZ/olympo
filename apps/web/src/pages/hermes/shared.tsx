@@ -40,7 +40,7 @@ export const EVENT_LABEL: Record<string, string> = {
   correccion_pedida: 'Corrección pedida a la vendedora', correccion_retirada: 'Corrección retirada', corregido: 'Datos corregidos por la vendedora',
 };
 
-export interface Message { id: string; direction: 'in' | 'out'; kind: string; template: string; body: string; buttons: { label: string; payload: string }[]; status: string; sender: string; createdAt: string }
+export interface Message { id: string; direction: 'in' | 'out'; kind: string; template: string; body: string; buttons: { label: string; payload: string }[]; status: string; sender: string; error?: string; createdAt: string }
 
 /** Detalle de un pedido: datos, avance, acciones, novedades, historial y la conversación con el cliente. */
 export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: string; onClose: () => void; onChanged?: () => void }) {
@@ -145,6 +145,7 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
                   <div className="bubble-meta">{m.direction === 'in' ? 'Cliente' : m.sender} · {fmtTime(m.createdAt)}</div>
                   <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
                   {m.buttons.length > 0 && <div className="bubble-buttons">{m.buttons.map((b) => <span key={b.payload}>{b.label}</span>)}</div>}
+                  {(m.status === 'fallido' || m.status === 'omitido') && <div className="bubble-error" role="note">{m.status === 'fallido' ? 'No se envió' : 'No se envió (aviso opcional)'}{m.error ? `: ${m.error}` : ''}</div>}
                 </div>
               ))}
             </div>

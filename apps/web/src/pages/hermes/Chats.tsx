@@ -252,6 +252,7 @@ function Conversation({ orderId, agent, onChanged }: { orderId: string; agent: s
               <div className="bubble-meta">{item.message.direction === 'in' ? 'Cliente' : item.message.sender === 'Hermes' ? 'Bot' : item.message.sender} · {fmtTime(item.message.createdAt)}</div>
               <div style={{ whiteSpace: 'pre-wrap' }}>{item.message.body}</div>
               {item.message.buttons.length > 0 && <div className="bubble-buttons">{item.message.buttons.map((b) => <span key={b.payload}>{b.label}</span>)}</div>}
+              {(item.message.status === 'fallido' || item.message.status === 'omitido') && <div className="bubble-error" role="note">{item.message.status === 'fallido' ? 'No se envió' : 'No se envió (aviso opcional)'}{item.message.error ? `: ${item.message.error}` : ''}</div>}
             </div>
           ))}
         </div>
