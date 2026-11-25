@@ -12,7 +12,7 @@ interface Item {
   icon: string;
   to?: string; // sin ruta = módulo previsto, aún no disponible
   roles?: Role[];
-  badge?: 'openAlerts' | 'unreadMessages' | 'pendingToday' | 'hermesAttention' | 'athenaAttention';
+  badge?: 'openAlerts' | 'unreadMessages' | 'pendingToday' | 'hermesAttention' | 'athenaAttention' | 'zeusAttention';
 }
 type Group = { group: string; items: Item[] };
 
@@ -22,6 +22,7 @@ interface Counts {
   pendingToday: number;
   hermesAttention: number;
   athenaAttention: number;
+  zeusAttention: number;
   recentAlerts: { id: string; message: string }[];
 }
 
@@ -82,6 +83,17 @@ NAV.athena = [
     ],
   },
 ];
+NAV.zeus = [
+  {
+    group: 'Clientes',
+    items: [
+      { label: 'Clientes', icon: 'users', to: '/zeus/clientes', roles: ['admin', 'supervisor'] },
+      { label: 'Recompra', icon: 'target', to: '/zeus/recompra', roles: ['admin', 'supervisor'] },
+      { label: 'Seguimientos', icon: 'check', to: '/zeus/seguimientos', roles: ['admin', 'supervisor'], badge: 'zeusAttention' },
+      { label: 'Mis seguimientos', icon: 'check', to: '/zeus/seguimientos', roles: ['seller'], badge: 'zeusAttention' },
+    ],
+  },
+];
 const ACCOUNT: Group = {
   group: 'Cuenta',
   items: [
@@ -94,6 +106,7 @@ const ACCOUNT: Group = {
 function productOf(pathname: string, fallback: string): string {
   if (pathname.startsWith('/hermes')) return 'hermes';
   if (pathname.startsWith('/athena')) return 'athena';
+  if (pathname.startsWith('/zeus')) return 'zeus';
   if (['/usuarios', '/auditoria', '/plataforma'].some((p) => pathname.startsWith(p))) return fallback;
   return 'argos';
 }
@@ -181,7 +194,7 @@ export function Layout() {
   );
   const groups = [...(NAV[product] ?? []), ACCOUNT];
   // Pendientes del otro producto, para avisar en el selector.
-  const pendingIn = (p: string) => (!counts ? 0 : p === 'hermes' ? counts.hermesAttention : p === 'athena' ? counts.athenaAttention : counts.openAlerts + counts.unreadMessages);
+  const pendingIn = (p: string) => (!counts ? 0 : p === 'hermes' ? counts.hermesAttention : p === 'athena' ? counts.athenaAttention : p === 'zeus' ? counts.zeusAttention : counts.openAlerts + counts.unreadMessages);
   const others = owned.filter((p) => p !== product);
   const otherPending = others.reduce((n, p) => n + pendingIn(p), 0);
 

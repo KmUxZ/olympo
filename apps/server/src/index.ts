@@ -23,6 +23,7 @@ import { extensionRoutes } from './argos/extension.routes.ts';
 import { hermesRoutes } from './hermes/routes.ts';
 import { channelRoutes } from './hermes/channel.routes.ts';
 import { athenaRoutes } from './athena/routes.ts';
+import { zeusRoutes } from './zeus/routes.ts';
 import { startJobs } from './argos/jobs.ts';
 
 // En producción el servidor está detrás del proxy del hosting: se confía en él para conocer la IP y el protocolo reales.
@@ -84,6 +85,7 @@ rosterRoutes(app);
 hermesRoutes(app);
 channelRoutes(app);
 athenaRoutes(app);
+zeusRoutes(app);
 
 // En producción el servidor entrega también la plataforma web ya compilada.
 if (existsSync(config.webDist)) {

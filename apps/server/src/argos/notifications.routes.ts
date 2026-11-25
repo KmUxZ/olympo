@@ -52,6 +52,14 @@ export function notificationRoutes(app: FastifyInstance): void {
 
     const athena = ctx.role === 'seller' ? 0 : (await db.query(`SELECT count(*)::int AS n FROM athena_conversations WHERE company_id = $1 AND attention AND NOT is_test`, [ctx.companyId])).rows[0].n;
 
-    return { athenaAttention: athena, hermesAttention: hermes.rows[0].n, openAlerts, recentAlerts, unreadMessages: unread.rows[0].n, pendingToday: tasks.rows[0].n };
+    // Zeus: seguimientos que vencen hoy o ya vencieron. La vendedora solo cuenta los suyos.
+    const zParams: unknown[] = [ctx.companyId, ctx.company.timezone];
+    if (ctx.role === 'seller') zParams.push(ctx.userId);
+    const zeus = await db.query(
+      `SELECT count(*)::int AS n FROM zeus_followups WHERE company_id = $1 AND status = 'pendiente' AND due_on <= to_char(now() AT TIME ZONE $2, 'YYYY-MM-DD')${ctx.role === 'seller' ? ' AND assigned_user_id = $3' : ''}`,
+      zParams,
+    );
+
+    return { zeusAttention: zeus.rows[0].n, athenaAttention: athena, hermesAttention: hermes.rows[0].n, openAlerts, recentAlerts, unreadMessages: unread.rows[0].n, pendingToday: tasks.rows[0].n };
   });
 }

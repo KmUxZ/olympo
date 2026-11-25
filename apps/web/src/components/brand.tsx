@@ -70,10 +70,20 @@ export function AthenaMark({ size = 28 }: { size?: number }) {
   );
 }
 
+/** Marca provisional de Zeus: un rayo, hasta tener el logo oficial. */
+export function ZeusMark({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="2" y="2" width="20" height="20" rx="6" fill="var(--brand-gold)" />
+      <path d="M13.2 4.5 7 13h4l-1.2 6.5L17 11h-4.3z" fill="#fff" />
+    </svg>
+  );
+}
+
 /** Catálogo de productos del ecosistema: nombre, lema, marca y a dónde lleva cada uno. */
 export const PRODUCT_INFO: Record<string, { name: string; tagline: string; home: string; available: boolean; Mark: (p: { size?: number }) => React.JSX.Element }> = {
   argos: { name: 'Argos', tagline: 'Equipo', home: '/', available: true, Mark: ArgosMark },
   hermes: { name: 'Hermes', tagline: 'Logística', home: '/hermes/pedidos', available: true, Mark: HermesMark },
-  zeus: { name: 'Zeus', tagline: 'CRM', home: '/', available: false, Mark: ({ size }) => <OlympoMark size={size} /> },
+  zeus: { name: 'Zeus', tagline: 'Clientes', home: '/zeus', available: true, Mark: ZeusMark },
   athena: { name: 'Athena', tagline: 'Vendedora IA', home: '/athena/conversaciones', available: true, Mark: AthenaMark },
 };

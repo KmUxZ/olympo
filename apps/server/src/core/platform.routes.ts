@@ -10,7 +10,7 @@ import { hashPassword, tempPassword } from './security.ts';
 
 const idParam = z.object({ id: z.uuid() });
 /** Productos que hoy existen y se pueden activar. */
-const productsSchema = z.array(z.enum(['argos', 'hermes', 'athena'])).min(1, 'activa al menos un producto').transform((list) => PRODUCTS.filter((p) => (list as string[]).includes(p)) as string[]);
+const productsSchema = z.array(z.enum(['argos', 'hermes', 'athena', 'zeus'])).min(1, 'activa al menos un producto').transform((list) => PRODUCTS.filter((p) => (list as string[]).includes(p)) as string[]);
 const limitsSchema = z.object({
   maxSellers: z.number().int().min(1).max(100000).nullable().optional(),
   maxLines: z.number().int().min(1).max(100000).nullable().optional(),

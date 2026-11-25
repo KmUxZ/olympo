@@ -30,6 +30,9 @@ import { HermesPanel } from './pages/hermes/Panel';
 import { AthenaChats } from './pages/athena/Chats';
 import { AthenaCatalog } from './pages/athena/Catalog';
 import { AthenaSettings } from './pages/athena/Settings';
+import { ZeusCustomers } from './pages/zeus/Customers';
+import { ZeusRepurchase } from './pages/zeus/Repurchase';
+import { ZeusFollowups } from './pages/zeus/Followups';
 import { InstallGuide } from './pages/InstallGuide';
 import { api } from './lib/api';
 import '@fontsource-variable/montserrat/wght.css';
@@ -111,6 +114,14 @@ function App() {
             <Route path="/athena/conversaciones" element={<Only roles={['admin', 'supervisor']}><AthenaChats /></Only>} />
             <Route path="/athena/catalogo" element={<Only roles={['admin', 'supervisor']}><AthenaCatalog /></Only>} />
             <Route path="/athena/ajustes" element={<Only roles={['admin', 'supervisor']}><AthenaSettings /></Only>} />
+          </>
+        )}
+        {has('zeus') && (
+          <>
+            <Route path="/zeus" element={<Navigate to={me.user.role === 'seller' ? '/zeus/seguimientos' : '/zeus/clientes'} replace />} />
+            <Route path="/zeus/clientes" element={<Only roles={['admin', 'supervisor']}><ZeusCustomers /></Only>} />
+            <Route path="/zeus/recompra" element={<Only roles={['admin', 'supervisor']}><ZeusRepurchase /></Only>} />
+            <Route path="/zeus/seguimientos" element={<ZeusFollowups />} />
           </>
         )}
         <Route path="/usuarios" element={<Only roles={['admin']}><Users /></Only>} />

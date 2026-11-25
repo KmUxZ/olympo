@@ -13,6 +13,7 @@
   --brand-slate: #64748b;
   --brand-teal: #0f9d92;
   --brand-violet: #6d4aff; /* Athena, provisional */
+  --brand-gold: #c98a04; /* Zeus, provisional */
 
   /* Tipografía: Montserrat (geométrica, como el logotipo de la propuesta) para títulos y marca; fuente del sistema para texto. */
   --font-display: "Montserrat Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
