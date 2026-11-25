@@ -36,6 +36,9 @@ async function getCompany(id: string) {
   return rows[0];
 }
 
+/** Productos en pausa para el público: solo los usa la empresa que opera la plataforma. */
+const INTERNAL_PRODUCTS = ['zeus'];
+
 export function platformRoutes(app: FastifyInstance): void {
   app.get('/api/platform/companies', guardPlatform(), async () => {
     const [companies, admins] = await Promise.all([
@@ -75,6 +78,8 @@ export function platformRoutes(app: FastifyInstance): void {
     const taken = await db.query(`SELECT 1 FROM core_users WHERE lower(email) = $1`, [body.adminEmail]);
     if (taken.rows.length) throw badRequest('Ya existe una cuenta con ese correo.', 'correo_duplicado');
 
+    body.products = body.products.filter((p) => !INTERNAL_PRODUCTS.includes(p));
+    if (!body.products.length) throw badRequest('Activa al menos un producto disponible.');
     const password = tempPassword();
     const hash = await hashPassword(password);
     const companyId = await db.tx(async (q) => {
@@ -105,6 +110,9 @@ export function platformRoutes(app: FastifyInstance): void {
     const status = body.status ?? company.status;
     const limits = body.limits ?? company.plan_limits;
     const products = body.products ?? company.products;
+    // Un producto en pausa solo se puede tener en la propia empresa de la plataforma; a las demás no se les puede activar.
+    const added = products.filter((p: string) => INTERNAL_PRODUCTS.includes(p) && !company.products.includes(p));
+    if (added.length && id !== req.ctx.companyId) throw badRequest('Zeus está en pausa: por ahora solo se usa en tu propia empresa.', 'producto_en_pausa');
     await db.query(`UPDATE core_companies SET name = $2, status = $3, suspended_reason = $4, plan_limits = $5::jsonb, products = $6::jsonb WHERE id = $1`, [
       id, name, status, status === 'suspended' ? (body.suspendedReason ?? '') : '', JSON.stringify(limits), JSON.stringify(products),
     ]);

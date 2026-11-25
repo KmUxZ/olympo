@@ -12,9 +12,9 @@ function ProductFields({ value, onChange }: { value: string[]; onChange: (v: str
       <legend className="small muted">Productos contratados</legend>
       <div className="checks">
         {Object.entries(PRODUCT_INFO).map(([key, p]) => (
-          <label key={key} style={p.available ? undefined : { opacity: 0.55 }}>
-            <input type="checkbox" disabled={!p.available} checked={value.includes(key)} onChange={(e) => onChange(e.target.checked ? [...value, key] : value.filter((x) => x !== key))} />
-            {p.name} · {p.tagline}{!p.available && ' (próximamente)'}
+          <label key={key} style={p.available && !p.internal ? undefined : { opacity: 0.55 }}>
+            <input type="checkbox" disabled={!p.available || Boolean(p.internal)} checked={value.includes(key)} onChange={(e) => onChange(e.target.checked ? [...value, key] : value.filter((x) => x !== key))} />
+            {p.name} · {p.tagline}{!p.available ? ' (próximamente)' : p.internal ? ' (en pausa, uso interno)' : ''}
           </label>
         ))}
       </div>

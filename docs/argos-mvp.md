@@ -260,4 +260,4 @@ Pendiente: conversaciones de números sin pedido (llegarán con el canal real) y
 - **Seguimientos**: pendiente / hecho (con resultado: compró, interesado, no le interesa, no contesta) / descartado. El menú cuenta los que vencen hoy o ya vencieron.
 - **Permisos**: clientes, fichas y recompra, solo administrador y supervisor. La vendedora ve únicamente «Mis seguimientos»: nombre, WhatsApp y qué hacer, sin historial de pedidos ni cifras; no puede reasignar ni cambiar fechas.
 - **Fuera del MVP**: embudo de prospectos, campañas por WhatsApp, clientes que no vienen de un pedido de Hermes, creación del pedido desde el seguimiento (hoy se crea en Hermes a mano) y segmentos configurables.
-- Zeus se activó en las empresas que ya tenían Hermes; a las demás se les marca desde Plataforma → Empresas.
+- **En pausa para el público**: Zeus solo está activo en la empresa que opera la plataforma. A las demás no se les muestra en el selector ni se les puede activar (`INTERNAL_PRODUCTS` en `platform.routes.ts`, `internal` en `PRODUCT_INFO`). Para abrirlo al público basta quitarlo de esas dos listas.

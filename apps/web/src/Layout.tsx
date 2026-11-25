@@ -219,7 +219,7 @@ export function Layout() {
           {switcherOpen && (
             <div className="switcher-menu" role="menu">
               <div className="switcher-title"><OlympoMark size={16} /> Productos de OLYMPO</div>
-              {Object.entries(PRODUCT_INFO).map(([key, p]) => {
+              {Object.entries(PRODUCT_INFO).filter(([key, p]) => !p.internal || owned.includes(key)).map(([key, p]) => {
                 const has = owned.includes(key);
                 const body = (
                   <>

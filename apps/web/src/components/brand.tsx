@@ -81,9 +81,9 @@ export function ZeusMark({ size = 28 }: { size?: number }) {
 }
 
 /** Catálogo de productos del ecosistema: nombre, lema, marca y a dónde lleva cada uno. */
-export const PRODUCT_INFO: Record<string, { name: string; tagline: string; home: string; available: boolean; Mark: (p: { size?: number }) => React.JSX.Element }> = {
+export const PRODUCT_INFO: Record<string, { name: string; tagline: string; home: string; available: boolean; /** en pausa para el público: no se ofrece ni se muestra a quien no lo tiene */ internal?: boolean; Mark: (p: { size?: number }) => React.JSX.Element }> = {
   argos: { name: 'Argos', tagline: 'Equipo', home: '/', available: true, Mark: ArgosMark },
   hermes: { name: 'Hermes', tagline: 'Logística', home: '/hermes/pedidos', available: true, Mark: HermesMark },
-  zeus: { name: 'Zeus', tagline: 'Clientes', home: '/zeus', available: true, Mark: ZeusMark },
+  zeus: { name: 'Zeus', tagline: 'Clientes', home: '/zeus', available: true, internal: true, Mark: ZeusMark },
   athena: { name: 'Athena', tagline: 'Vendedora IA', home: '/athena/conversaciones', available: true, Mark: AthenaMark },
 };
