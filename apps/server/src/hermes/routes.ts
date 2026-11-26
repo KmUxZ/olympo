@@ -43,7 +43,8 @@ const orderBody = z.object({
 
 const ORDER_COLUMNS = `o.id, o.code, o.customer_name AS "customerName", o.phone, o.address, o.city, o.department, o.notes, o.items, o.total, o.payment,
   o.status, o.awaiting, o.attention, o.attention_reason AS "attentionReason", o.seller_user_id AS "sellerUserId", u.name AS "sellerName",
-  o.source, o.external_ref AS "externalRef", o.carrier, o.tracking_number AS "trackingNumber", o.tracking_url AS "trackingUrl",
+  o.source, o.external_ref AS "externalRef", o.operator_id AS "operatorId", o.operator_ref AS "operatorRef",
+  (SELECT op.name FROM hermes_operators op WHERE op.id = o.operator_id) AS "operatorName", o.carrier, o.tracking_number AS "trackingNumber", o.tracking_url AS "trackingUrl",
   o.address_check AS "addressCheck", o.customer_risk AS "customerRisk",
   o.bot_paused AS "botPaused", o.taken_by AS "takenBy", o.attention_at AS "attentionAt",
   o.reminders_sent AS "remindersSent", o.created_at AS "createdAt", o.confirmed_at AS "confirmedAt", o.dispatched_at AS "dispatchedAt",
@@ -207,7 +208,7 @@ export function hermesRoutes(app: FastifyInstance): void {
   // ───────── Pedidos ─────────
   app.get('/api/hermes/orders', guard(), async (req) => {
     const q = parse(
-      z.object({ status: z.enum(STATUSES).optional(), attention: z.enum(['1']).optional(), q: z.string().trim().max(80).optional(), limit: z.coerce.number().int().min(1).max(300).default(150) }),
+      z.object({ status: z.enum(STATUSES).optional(), attention: z.enum(['1']).optional(), operator: z.uuid().or(z.literal('ninguno')).optional(), q: z.string().trim().max(80).optional(), limit: z.coerce.number().int().min(1).max(300).default(150) }),
       req.query,
     );
     if (req.ctx.role === 'seller') {
@@ -232,6 +233,11 @@ export function hermesRoutes(app: FastifyInstance): void {
       where += ` AND o.status = $${params.length}`;
     }
     if (q.attention) where += ` AND o.attention`;
+    if (q.operator === 'ninguno') where += ` AND o.operator_id IS NULL`;
+    else if (q.operator) {
+      params.push(q.operator);
+      where += ` AND o.operator_id = $${params.length}`;
+    }
     if (q.q) {
       params.push(`%${q.q.toLowerCase()}%`);
       where += ` AND (lower(o.customer_name) LIKE $${params.length} OR o.phone LIKE $${params.length} OR lower(o.code) LIKE $${params.length} OR o.tracking_number LIKE $${params.length})`;
@@ -300,7 +306,7 @@ export function hermesRoutes(app: FastifyInstance): void {
       z.discriminatedUnion('action', [
         z.object({ action: z.literal('confirmar') }),
         z.object({ action: z.literal('cancelar'), reason: z.string().trim().min(2).max(200) }),
-        z.object({ action: z.literal('despachar'), carrier: z.string().trim().min(2).max(60), trackingNumber: z.string().trim().min(3).max(60), trackingUrl: z.url().max(300).regex(/^https?:\/\//i, 'el enlace debe empezar por http:// o https://').or(z.literal('')).default('') }),
+        z.object({ action: z.literal('despachar'), carrier: z.string().trim().min(2).max(60), trackingNumber: z.string().trim().min(3).max(60), trackingUrl: z.url().max(300).regex(/^https?:\/\//i, 'el enlace debe empezar por http:// o https://').or(z.literal('')).default(''), operatorId: z.uuid().nullable().optional(), operatorRef: z.string().trim().max(120).default('') }),
         z.object({ action: z.literal('en_reparto') }),
         z.object({ action: z.literal('novedad'), type: z.enum(INCIDENT_TYPES), description: z.string().trim().max(300).default('') }),
         z.object({ action: z.literal('entregado') }),
@@ -320,7 +326,18 @@ export function hermesRoutes(app: FastifyInstance): void {
         await bot.cancel(o, b.reason, ctx.name);
         await auditBy(ctx, { action: 'hermes.pedido_cancelado', entityType: 'pedido', entityId: id, summary: `Canceló el pedido ${o.code}: ${b.reason}` });
         break;
-      case 'despachar': need(['confirmado']); await bot.dispatch(o, b, ctx.name); break;
+      case 'despachar':
+        need(['confirmado']);
+        if (b.operatorId) {
+          const op = await db.query(`SELECT 1 FROM hermes_operators WHERE id = $1 AND company_id = $2`, [b.operatorId, ctx.companyId]);
+          if (!op.rows.length) throw badRequest('El operador indicado no existe.', 'operador_no_valido');
+        }
+        // Si no se indica operador, se conserva el que ya tenía asignado el pedido.
+        if (b.operatorId !== undefined || b.operatorRef) {
+          await db.query(`UPDATE hermes_orders SET operator_id = COALESCE($2, operator_id), operator_ref = $3 WHERE id = $1`, [id, b.operatorId ?? null, b.operatorRef]);
+        }
+        await bot.dispatch(o, b, ctx.name);
+        break;
       case 'en_reparto': need(['despachado', 'novedad']); await bot.outForDelivery(o, ctx.name); break;
       case 'novedad': need(['despachado', 'en_reparto']); await bot.reportIncident(o, b.type, b.description, ctx.name); break;
       case 'entregado': need(['despachado', 'en_reparto', 'novedad']); await bot.delivered(o, ctx.name); break;
@@ -606,7 +623,7 @@ export function hermesRoutes(app: FastifyInstance): void {
       (count(*) FILTER (WHERE o.status = 'devuelto'))::int AS returned,
       (count(*) FILTER (WHERE o.status = 'cancelado'))::int AS cancelled,
       coalesce(sum(o.total) FILTER (WHERE o.status = 'entregado'), 0)::bigint AS "deliveredValue"`;
-    const [totals, bySeller, byCity, byCarrier, byIncident, messages, timing] = await Promise.all([
+    const [totals, bySeller, byCity, byCarrier, byIncident, messages, timing, byOperator] = await Promise.all([
       db.query(`SELECT ${agg}, (count(*) FILTER (WHERE o.status = 'por_confirmar'))::int AS pending, (count(*) FILTER (WHERE o.attention))::int AS attention FROM hermes_orders o WHERE ${since}`, args),
       db.query(`SELECT coalesce(u.name, 'Sin atribuir') AS name, ${agg} FROM hermes_orders o LEFT JOIN core_users u ON u.id = o.seller_user_id WHERE ${since} GROUP BY 1 ORDER BY count(*) DESC LIMIT 30`, args),
       db.query(`SELECT o.city AS name, ${agg} FROM hermes_orders o WHERE ${since} GROUP BY 1 ORDER BY count(*) DESC LIMIT 12`, args),
@@ -618,6 +635,7 @@ export function hermesRoutes(app: FastifyInstance): void {
       ),
       db.query(`SELECT (count(*) FILTER (WHERE m.direction = 'out'))::int AS sent, (count(*) FILTER (WHERE m.direction = 'in'))::int AS received FROM hermes_messages m WHERE m.company_id = $1 AND m.created_at >= now() - ($2 || ' days')::interval`, args),
       db.query(`SELECT round(avg(extract(epoch FROM (o.confirmed_at - o.created_at)) / 60))::int AS "minutesToConfirm" FROM hermes_orders o WHERE ${since} AND o.confirmed_at IS NOT NULL`, args),
+      db.query(`SELECT op.name AS name, ${agg} FROM hermes_orders o JOIN hermes_operators op ON op.id = o.operator_id WHERE ${since} GROUP BY 1 ORDER BY count(*) DESC LIMIT 12`, args),
     ]);
     const num = (r: Record<string, unknown>) => ({ ...r, deliveredValue: Number(r.deliveredValue ?? 0) });
     return {
@@ -626,6 +644,7 @@ export function hermesRoutes(app: FastifyInstance): void {
       bySeller: bySeller.rows.map(num),
       byCity: byCity.rows.map(num),
       byCarrier: byCarrier.rows.map(num),
+      byOperator: byOperator.rows.map(num),
       byIncident: byIncident.rows.map((r) => ({ ...r, label: bot.INCIDENT_LABEL[r.type] ?? r.type })),
       messages: messages.rows[0],
       minutesToConfirm: timing.rows[0]?.minutesToConfirm ?? null,

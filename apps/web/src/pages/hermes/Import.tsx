@@ -46,13 +46,18 @@ function splitLine(line: string, sep: string): string[] {
 
 /** Convierte lo pegado (Excel usa tabulaciones; un CSV, comas o punto y coma) en filas con campos del pedido. */
 export function parseSheet(text: string): { rows: Row[]; usedHeader: boolean } {
+  return parseColumns(text, COLUMNS, DEFAULT_ORDER, 3);
+}
+
+/** Lo mismo para cualquier hoja: `columns` dice qué títulos corresponden a cada campo. */
+export function parseColumns(text: string, columns: Record<string, string[]>, defaultOrder: string[], minHeaders: number): { rows: Row[]; usedHeader: boolean } {
   const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim());
   if (!lines.length) return { rows: [], usedHeader: false };
   const sep = lines[0].includes('\t') ? '\t' : (lines[0].split(';').length > lines[0].split(',').length ? ';' : ',');
   const first = splitLine(lines[0], sep);
-  const mapped = first.map((h) => Object.keys(COLUMNS).find((k) => COLUMNS[k].includes(plain(h))) ?? null);
-  const usedHeader = mapped.filter(Boolean).length >= 3;
-  const fields = usedHeader ? mapped : DEFAULT_ORDER;
+  const mapped = first.map((h) => Object.keys(columns).find((k) => columns[k].includes(plain(h))) ?? null);
+  const usedHeader = mapped.filter(Boolean).length >= minHeaders;
+  const fields = usedHeader ? mapped : defaultOrder;
   const rows = lines.slice(usedHeader ? 1 : 0).map((line) => {
     const cells = splitLine(line, sep);
     const row: Row = {};

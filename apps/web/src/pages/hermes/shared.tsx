@@ -35,7 +35,7 @@ export const STEPS = ['por_confirmar', 'confirmado', 'despachado', 'en_reparto',
 export const EVENT_LABEL: Record<string, string> = {
   bot_pausado: 'Una persona tomó la conversación', bot_reanudado: 'La conversación volvió al bot', direccion_incompleta: 'Dirección incompleta', direccion_por_revisar: 'Dirección por revisar',
   creado: 'Pedido creado', confirmacion_enviada: 'Confirmación enviada', recordatorio: 'Recordatorio', confirmado: 'Confirmado', cancelado: 'Cancelado',
-  despachado: 'Despachado', en_reparto: 'En reparto', novedad: 'Novedad', novedad_gestionada: 'Novedad gestionada', entregado: 'Entregado', devuelto: 'Devuelto',
+  operador_asignado: 'Operador logístico', despachado: 'Despachado', en_reparto: 'En reparto', novedad: 'Novedad', novedad_gestionada: 'Novedad gestionada', entregado: 'Entregado', devuelto: 'Devuelto',
   atencion: 'Requiere atención', atendido: 'Atendido', direccion_corregida: 'Dirección corregida',
   correccion_pedida: 'Corrección pedida a la vendedora', correccion_retirada: 'Corrección retirada', corregido: 'Datos corregidos por la vendedora',
 };
@@ -48,7 +48,8 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
   const canManage = me!.user.role !== 'seller';
   const detail = useApi(`/api/hermes/orders/${orderId}`, 5000);
   const [panel, setPanel] = useState<'despachar' | 'novedad' | 'cancelar' | null>(null);
-  const [form, setForm] = useState({ carrier: '', trackingNumber: '', trackingUrl: '', type: 'ausente', description: '', reason: '' });
+  const operators = useApi<{ operators: { id: string; name: string; carrier: string; active: boolean }[] }>(canManage ? '/api/hermes/operators' : null);
+  const [form, setForm] = useState({ operatorId: '', operatorRef: '', carrier: '', trackingNumber: '', trackingUrl: '', type: 'ausente', description: '', reason: '' });
   const [text, setText] = useState('');
   const [simText, setSimText] = useState('');
   const [asking, setAsking] = useState(false);
@@ -80,6 +81,7 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
   const stepIndex = STEPS.indexOf(o.status === 'novedad' ? 'en_reparto' : o.status);
   const lastButtons = [...messages].reverse().find((m) => m.direction === 'out' && m.buttons.length)?.buttons ?? [];
   const is = (...s: string[]) => s.includes(o.status);
+  const activeOperators = (operators.data?.operators ?? []).filter((op) => op.active || op.id === o.operatorId);
 
   return (
     <Modal title={`Pedido ${o.code}`} onClose={onClose} wide>
@@ -90,7 +92,8 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
             <strong style={{ fontSize: 'var(--text-lg)' }}>{o.customerName}</strong>
             <div className="small muted">{o.phone} · {o.address}, {o.city}{o.notes ? ` · ${o.notes}` : ''}</div>
             <div className="small muted">{itemsLabel(o.items)} · <strong>{money(o.total)}</strong> {o.payment === 'pagado' ? '(ya pagado)' : 'contraentrega'}{o.sellerName ? ` · Venta de ${o.sellerName}` : ''}</div>
-            {o.trackingNumber && <div className="small">Guía <span className="mono">{o.trackingNumber}</span> · {o.carrier}{/^https?:\/\//i.test(o.trackingUrl ?? '') && <> · <a href={o.trackingUrl} target="_blank" rel="noopener noreferrer">Rastrear</a></>}</div>}
+            {o.operatorName && !o.trackingNumber && <div className="small">Sale por <strong>{o.operatorName}</strong></div>}
+            {o.trackingNumber && <div className="small">Guía <span className="mono">{o.trackingNumber}</span> · {o.carrier}{o.operatorName ? ` · por ${o.operatorName}` : ''}{/^https?:\/\//i.test(o.trackingUrl ?? '') && <> · <a href={o.trackingUrl} target="_blank" rel="noopener noreferrer">Rastrear</a></>}</div>}
           </div>
           <Badge tone={st?.tone}>{st?.label ?? o.status}</Badge>
         </div>
@@ -188,7 +191,20 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
                   </div>
                 )}
                 {panel === 'despachar' && (
-                  <form className="stack" onSubmit={(e: FormEvent) => { e.preventDefault(); void act({ action: 'despachar', carrier: form.carrier, trackingNumber: form.trackingNumber, trackingUrl: form.trackingUrl }); }}>
+                  <form className="stack" onSubmit={(e: FormEvent) => { e.preventDefault(); void act({ action: 'despachar', carrier: form.carrier, trackingNumber: form.trackingNumber, trackingUrl: form.trackingUrl, operatorId: (form.operatorId || o.operatorId) || null, operatorRef: form.operatorRef }); }}>
+                    {activeOperators.length > 0 && (
+                      <div className="row">
+                        <div className="grow">
+                          <Field label="Operador logístico">
+                            <select value={form.operatorId || o.operatorId || ''} onChange={(e) => { const op = activeOperators.find((x) => x.id === e.target.value); setForm({ ...form, operatorId: e.target.value, carrier: form.carrier || op?.carrier || '' }); }}>
+                              <option value="">Sin operador</option>
+                              {activeOperators.map((op) => <option key={op.id} value={op.id}>{op.name}</option>)}
+                            </select>
+                          </Field>
+                        </div>
+                        <div className="grow"><Field label="Número del pedido en el operador (opcional)"><input maxLength={120} value={form.operatorRef} onChange={(e) => setForm({ ...form, operatorRef: e.target.value })} /></Field></div>
+                      </div>
+                    )}
                     <div className="row">
                       <div className="grow"><Field label="Transportadora"><input required minLength={2} value={form.carrier} onChange={(e) => setForm({ ...form, carrier: e.target.value })} placeholder="Ej.: Interrapidísimo" /></Field></div>
                       <div className="grow"><Field label="Número de guía"><input required minLength={3} value={form.trackingNumber} onChange={(e) => setForm({ ...form, trackingNumber: e.target.value })} /></Field></div>

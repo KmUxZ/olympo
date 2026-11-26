@@ -6,9 +6,10 @@ import { fmtMinutes } from '../../lib/format';
 import { Badge, Empty, ErrorNote, Field, Loading, PageHero } from '../../components/ui';
 import { money } from './shared';
 import { ChannelCard } from './Channel';
+import { OperatorsCard } from './Operators';
 
 interface Agg { name?: string; total: number; confirmed: number; dispatched: number; delivered: number; returned: number; cancelled: number; deliveredValue: number }
-interface PanelData { days: number; totals: Agg & { pending: number; attention: number }; bySeller: Agg[]; byCity: Agg[]; byCarrier: Agg[]; byIncident: { type: string; label: string; total: number; resolved: number; returned: number }[]; messages: { sent: number; received: number }; minutesToConfirm: number | null }
+interface PanelData { days: number; totals: Agg & { pending: number; attention: number }; bySeller: Agg[]; byCity: Agg[]; byCarrier: Agg[]; byOperator: Agg[]; byIncident: { type: string; label: string; total: number; resolved: number; returned: number }[]; messages: { sent: number; received: number }; minutesToConfirm: number | null }
 
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : null);
 /** Tasa de entrega: entregados entre los pedidos despachados que ya terminaron (entregados + devueltos). */
@@ -79,11 +80,13 @@ export function HermesPanel() {
           <div className="grid cols-2">
             <RateTable title="Por ciudad" first="Ciudad" rows={d.byCity} compact />
             <RateTable title="Por transportadora" first="Transportadora" rows={d.byCarrier} compact />
+            {d.byOperator.length > 0 && <RateTable title="Por operador logístico" first="Operador" rows={d.byOperator} compact />}
           </div>
         </>
       )}
 
       <SettingsCard />
+      <OperatorsCard />
       <AdminChannel />
     </>
   );

@@ -22,6 +22,7 @@ import { rosterRoutes } from './argos/roster.ts';
 import { extensionRoutes } from './argos/extension.routes.ts';
 import { hermesRoutes } from './hermes/routes.ts';
 import { channelRoutes } from './hermes/channel.routes.ts';
+import { operatorRoutes } from './hermes/operators.routes.ts';
 import { athenaRoutes } from './athena/routes.ts';
 import { zeusRoutes } from './zeus/routes.ts';
 import { startJobs } from './argos/jobs.ts';
@@ -84,6 +85,7 @@ extensionRoutes(app);
 rosterRoutes(app);
 hermesRoutes(app);
 channelRoutes(app);
+operatorRoutes(app);
 athenaRoutes(app);
 zeusRoutes(app);
 

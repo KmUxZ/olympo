@@ -261,3 +261,11 @@ Pendiente: conversaciones de números sin pedido (llegarán con el canal real) y
 - **Permisos**: clientes, fichas y recompra, solo administrador y supervisor. La vendedora ve únicamente «Mis seguimientos»: nombre, WhatsApp y qué hacer, sin historial de pedidos ni cifras; no puede reasignar ni cambiar fechas.
 - **Fuera del MVP**: embudo de prospectos, campañas por WhatsApp, clientes que no vienen de un pedido de Hermes, creación del pedido desde el seguimiento (hoy se crea en Hermes a mano) y segmentos configurables.
 - **En pausa para el público**: Zeus solo está activo en la empresa que opera la plataforma. A las demás no se les muestra en el selector ni se les puede activar (`INTERNAL_PRODUCTS` en `platform.routes.ts`, `internal` en `PRODUCT_INFO`). Para abrirlo al público basta quitarlo de esas dos listas.
+
+## Hermes · operadores logísticos y guías en lote
+
+- Un **operador logístico** es la plataforma intermediaria por la que sale un pedido y que genera la guía con la transportadora. Cada empresa define los suyos en Hermes → Panel de entregas (solo el administrador los crea o desactiva).
+- Cada pedido guarda su operador (`operator_id`) y su número dentro de ese operador (`operator_ref`). La persona encargada (administrador o supervisor) lo elige en «Pedidos», uno a uno o varios a la vez, mientras el pedido no se haya despachado.
+- **Subir guías**: se pega o se sube el archivo de guías del operador (columnas Teléfono y Guía; opcionales Pedido y Transportadora). Cada fila se cruza con el pedido **confirmado** de ese teléfono —solo por teléfono, nunca por nombre—, se despacha y el bot le envía la guía al cliente. Hay vista previa y no se despacha nada dudoso: teléfono con dos pedidos confirmados, pedido de otro operador, pedido sin confirmar o guía ya cargada.
+- El panel compara la tasa de entrega por operador. La vendedora no ve ningún dato de operador.
+- Pendiente: conectores automáticos por operador (`driver` distinto de `manual`) que traigan guía y estados sin archivo.

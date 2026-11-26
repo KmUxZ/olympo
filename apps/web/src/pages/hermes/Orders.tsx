@@ -7,8 +7,10 @@ import { itemsLabel, money, OrderDetailModal, ORDER_STATUS, ValidationBox } from
 import type { Validation } from './shared';
 import { ImportModal } from './Import';
 import { MyOrders } from './MyOrders';
+import { GuidesModal } from './Operators';
+import type { OperatorList } from './Operators';
 
-interface Order { id: string; code: string; customerName: string; phone: string; city: string; items: { name: string; qty: number; free?: boolean }[]; total: number; payment: string; status: string; attention: boolean; attentionReason: string; addressCheck: { level: string } | null; customerRisk: string; sellerName: string | null; carrier: string; trackingNumber: string; createdAt: string }
+interface Order { id: string; code: string; customerName: string; phone: string; city: string; items: { name: string; qty: number; free?: boolean }[]; total: number; payment: string; status: string; attention: boolean; attentionReason: string; addressCheck: { level: string } | null; customerRisk: string; sellerName: string | null; carrier: string; trackingNumber: string; operatorId: string | null; operatorName: string | null; createdAt: string }
 
 const TABS: [string, string][] = [['', 'Todos'], ['atencion', 'Por atender'], ['por_confirmar', 'Por confirmar'], ['confirmado', 'Por despachar'], ['despachado', 'Despachados'], ['en_reparto', 'En reparto'], ['novedad', 'Con novedad'], ['entregado', 'Entregados'], ['devuelto', 'Devueltos'], ['cancelado', 'Cancelados']];
 
@@ -26,16 +28,43 @@ function ManageOrders() {
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [operator, setOperator] = useState('');
+  const [chosen, setChosen] = useState<string[]>([]);
+  const [target, setTarget] = useState('');
+  const [guides, setGuides] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ops = useApi<OperatorList>('/api/hermes/operators');
+  const operators = ops.data?.operators ?? [];
   const path = useMemo(() => {
     const q = new URLSearchParams();
     if (tab === 'atencion') q.set('attention', '1');
     else if (tab) q.set('status', tab);
     if (search.trim()) q.set('q', search.trim());
+    if (operator) q.set('operator', operator);
     return `/api/hermes/orders?${q}`;
-  }, [tab, search]);
+  }, [tab, search, operator]);
   const list = useApi<{ orders: Order[]; counts: { status: string; n: number; attention: number }[] }>(path, 15_000);
   const count = (...statuses: string[]) => (list.data?.counts ?? []).filter((c) => statuses.includes(c.status)).reduce((n, c) => n + c.n, 0);
   const attention = (list.data?.counts ?? []).reduce((n, c) => n + c.attention, 0);
+  // El operador solo se puede cambiar mientras el pedido no ha salido.
+  const assignable = (list.data?.orders ?? []).filter((o) => o.status === 'por_confirmar' || o.status === 'confirmado');
+  const picked = chosen.filter((id) => assignable.some((o) => o.id === id));
+  const allPicked = assignable.length > 0 && picked.length === assignable.length;
+  const toggle = (id: string) => setChosen(chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id]);
+
+  async function assign() {
+    setError(null);
+    try {
+      const res = await api<{ assigned: number }>('POST', '/api/hermes/orders/assign-operator', { orderIds: picked, operatorId: target === 'ninguno' ? null : target });
+      const name = operators.find((op) => op.id === target)?.name;
+      setNotice(name ? `${res.assigned} pedido(s) saldrán por ${name}.` : `${res.assigned} pedido(s) quedaron sin operador.`);
+      setChosen([]);
+      setTarget('');
+      await Promise.all([list.reload(), ops.reload()]);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
 
   return (
     <>
@@ -52,12 +81,14 @@ function ManageOrders() {
       >
         <button className="btn primary" onClick={() => setCreating(true)}>Nuevo pedido</button>
         {me!.user.role !== 'seller' && <button className="btn" onClick={() => setImporting(true)}>Importar en lote</button>}
+        {operators.some((op) => op.active) && <button className="btn" onClick={() => setGuides(true)}>Subir guías</button>}
         <Freshness updatedAt={list.updatedAt} error={list.error} />
       </PageHero>
       {notice && <div className="alert ok" role="status">{notice}</div>}
+      <ErrorNote error={error} />
 
-      <div className="row">
-        <div className="tabs grow" role="tablist" style={{ flexWrap: 'wrap' }}>
+      <div className="row" style={{ flexWrap: 'wrap' }}>
+        <div className="tabs grow" role="tablist" style={{ flexWrap: 'wrap', minWidth: 'min(100%, 560px)' }}>
           {TABS.map(([v, label]) => (
             <button key={v} role="tab" aria-selected={tab === v} onClick={() => setTab(v)}>
               {label}{v === 'atencion' && attention > 0 && <> <Badge tone="danger">{attention}</Badge></>}
@@ -65,16 +96,37 @@ function ManageOrders() {
           ))}
         </div>
         <input aria-label="Buscar pedido" placeholder="Buscar por nombre, teléfono, pedido o guía" value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 320 }} />
+        {operators.length > 0 && (
+          <select aria-label="Operador logístico" value={operator} onChange={(e) => setOperator(e.target.value)} style={{ width: 190 }}>
+            <option value="">Todos los operadores</option>
+            {operators.map((op) => <option key={op.id} value={op.id}>{op.name}</option>)}
+            <option value="ninguno">Sin operador</option>
+          </select>
+        )}
       </div>
+
+      {operators.length > 0 && picked.length > 0 && (
+        <div className="card card-pad row" role="group" aria-label="Asignar operador">
+          <strong>{picked.length} pedido(s) elegidos</strong>
+          <select aria-label="Operador para los pedidos elegidos" value={target} onChange={(e) => setTarget(e.target.value)} style={{ width: 220 }}>
+            <option value="">Sale por…</option>
+            {operators.filter((op) => op.active).map((op) => <option key={op.id} value={op.id}>{op.name}</option>)}
+            <option value="ninguno">Quitar operador</option>
+          </select>
+          <button className="btn primary sm" disabled={!target} onClick={() => void assign()}>Asignar</button>
+          <button className="btn sm" onClick={() => setChosen([])}>Quitar selección</button>
+        </div>
+      )}
 
       <div className="card">
         {!list.data ? (list.error ? <ErrorNote error={list.error} /> : <Loading />) : list.data.orders.length ? (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Pedido</th><th>Cliente</th><th>Productos</th><th>Valor</th><th>Estado</th><th>Guía</th><th>Venta de</th><th></th></tr></thead>
+              <thead><tr>{operators.length > 0 && <th><input type="checkbox" aria-label="Elegir todos los pedidos sin despachar" disabled={!assignable.length} checked={allPicked} onChange={() => setChosen(allPicked ? [] : assignable.map((o) => o.id))} /></th>}<th>Pedido</th><th>Cliente</th><th>Productos</th><th>Valor</th><th>Estado</th><th>Guía y operador</th><th>Venta de</th><th></th></tr></thead>
               <tbody>
                 {list.data.orders.map((o) => (
                   <tr key={o.id}>
+                    {operators.length > 0 && <td>{assignable.some((a) => a.id === o.id) && <input type="checkbox" aria-label={`Elegir el pedido ${o.code}`} checked={chosen.includes(o.id)} onChange={() => toggle(o.id)} />}</td>}
                     <td className="nowrap"><strong>{o.code}</strong><span className="sub">{fmtDateTime(o.createdAt)}</span></td>
                     <td>
                       {o.customerName}<span className="sub">{o.phone} · {o.city}</span>
@@ -87,7 +139,7 @@ function ManageOrders() {
                       <Badge tone={ORDER_STATUS[o.status]?.tone}>{ORDER_STATUS[o.status]?.label ?? o.status}</Badge>
                       {o.attention && <span className="sub" style={{ color: 'var(--color-danger)' }}>Necesita atención: {o.attentionReason}</span>}
                     </td>
-                    <td>{o.trackingNumber ? <><span className="mono">{o.trackingNumber}</span><span className="sub">{o.carrier}</span></> : '—'}</td>
+                    <td>{o.trackingNumber ? <><span className="mono">{o.trackingNumber}</span><span className="sub">{[o.carrier, o.operatorName].filter(Boolean).join(' · ')}</span></> : o.operatorName ? <span className="sub">Sale por {o.operatorName}</span> : '—'}</td>
                     <td>{o.sellerName ?? <span className="muted">—</span>}</td>
                     <td><button className="btn sm" onClick={() => setOpen(o.id)}>Abrir</button></td>
                   </tr>
@@ -113,6 +165,7 @@ function ManageOrders() {
         />
       )}
       {importing && <ImportModal onClose={() => setImporting(false)} onImported={() => void list.reload()} />}
+      {guides && <GuidesModal operators={operators} onClose={() => setGuides(false)} onDone={() => { void list.reload(); void ops.reload(); }} />}
       {open && <OrderDetailModal orderId={open} onClose={() => setOpen(null)} onChanged={() => void list.reload()} />}
     </>
   );
