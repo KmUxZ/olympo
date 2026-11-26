@@ -179,7 +179,7 @@ function SettingsCard() {
         )}
         <ErrorNote error={error ?? settings.error} />
         {saved && <div className="alert ok" role="status">Ajustes guardados.</div>}
-        <Field label="Nombre con el que el bot se presenta" hint="Es quien firma el primer mensaje: «Soy Valentina, asistente virtual de tu tienda». Si lo dejas vacío, se presenta como Hermes.">
+        <Field label="Nombre con el que el bot se presenta" hint="Es quien firma el primer mensaje: «Soy Valentina de tu tienda». Si lo dejas vacío, se presenta como Hermes.">
           <input maxLength={30} value={botName} disabled={!isAdmin} onChange={(e) => setBotName(e.target.value)} placeholder="Ej.: Valentina" style={{ maxWidth: 320 }} />
         </Field>
         <div className="grid cols-2">

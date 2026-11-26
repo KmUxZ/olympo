@@ -78,7 +78,7 @@ const INCIDENT_REASON: Record<string, string> = {
 export const TEMPLATES: { key: string; title: string; required: boolean; when: string; text: string; buttons: string[]; sample: Record<string, string> }[] = [
   {
     key: 'hermes_confirmacion', title: 'Confirmación del pedido', required: true, when: 'Al crear el pedido.',
-    text: 'Hola {{customer_name}} 👋 Soy {{agent_name}}, asistente virtual de {{company}}. ¡Gracias por tu compra! Ya tengo tu pedido {{order_code}}: {{items}}. {{payment}}. Te lo enviamos a: {{address}}. ¿Me confirmas que todo está bien para despacharlo?',
+    text: 'Hola {{customer_name}} 👋 Soy {{agent_name}} de {{company}}. ¡Gracias por tu compra! Ya tengo tu pedido {{order_code}}: {{items}}. {{payment}}. Te lo enviamos a: {{address}}. ¿Me confirmas que todo está bien para despacharlo?',
     buttons: ['Confirmar pedido', 'Corregir datos', 'Cancelar'],
     sample: { customer_name: 'Laura', agent_name: 'Valentina', order_code: 'H-000123', company: 'Mi Tienda', items: '2 fajas talla M', payment: 'Total a pagar al recibir: $120.000', address: 'Calle 10 # 5-20, barrio Centro, Cali' },
   },
@@ -142,7 +142,7 @@ const CONFIRM_BUTTONS = [
 export const MESSAGES = {
   confirmacion: (o: Order, company: string, agent: string): Outgoing => ({
     template: 'hermes_confirmacion',
-    body: `Hola ${firstName(o.customer_name)} 👋 Soy ${agent}, asistente virtual de ${company}. ¡Gracias por tu compra!\nYa tengo tu pedido ${o.code}: ${itemsText(o)}. ${payLine(o)}\nTe lo enviamos a: ${o.address}, ${o.city}${o.notes ? ` (${o.notes})` : ''}.${missingLine(o)}\n¿Me confirmas que todo está bien para despacharlo?`,
+    body: `Hola ${firstName(o.customer_name)} 👋 Soy ${agent} de ${company}. ¡Gracias por tu compra!\nYa tengo tu pedido ${o.code}: ${itemsText(o)}. ${payLine(o)}\nTe lo enviamos a: ${o.address}, ${o.city}${o.notes ? ` (${o.notes})` : ''}.${missingLine(o)}\n¿Me confirmas que todo está bien para despacharlo?`,
     buttons: CONFIRM_BUTTONS,
     params: { customer_name: v(firstName(o.customer_name), 60), agent_name: v(agent, 40), order_code: o.code, company: v(company, 80), items: v(itemsText(o)), payment: payVar(o), address: v(`${o.address}, ${o.city}`) },
   }),
@@ -193,9 +193,9 @@ export const MESSAGES = {
     ],
   }),
   novedad_recibida: (): Outgoing => ({ template: 'hermes_novedad_recibida', body: '¡Gracias! Ya le avisé a la transportadora y te escribo apenas salga de nuevo a reparto.' }),
-  novedad_rechazo: (): Outgoing => ({ template: 'hermes_novedad_rechazo', body: 'Entendido, gracias por avisarme. Una persona de nuestro equipo te escribirá en breve.' }),
+  novedad_rechazo: (): Outgoing => ({ template: 'hermes_novedad_rechazo', body: 'Entendido, gracias por avisarme. Alguien de nuestro equipo te escribirá en breve.' }),
   entregado: (o: Order): Outgoing => ({ template: 'hermes_entregado', body: `¡Entregado! 🎉 ${firstName(o.customer_name)}, tu pedido ${o.code} ya está en tus manos. Gracias por confiar en nosotros.`, params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code } }),
-  humano: (): Outgoing => ({ template: 'hermes_humano', body: 'Gracias por escribirme. Le paso tu mensaje a una persona de nuestro equipo para que te responda en breve.' }),
+  humano: (): Outgoing => ({ template: 'hermes_humano', body: 'Gracias por escribirme. Ya le paso tu mensaje al equipo para que te respondan en breve.' }),
 };
 
 // ───────── Utilidades ─────────
