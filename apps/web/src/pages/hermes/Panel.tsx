@@ -136,9 +136,10 @@ function AdminChannel() {
 function SettingsCard() {
   const { me } = useAuth();
   const isAdmin = me?.user.role === 'admin';
-  const settings = useApi<{ settings: { driver: string; reminderMinutes: number[]; escalateMinutes: number; botName: string } }>('/api/hermes/settings');
+  const settings = useApi<{ settings: { driver: string; reminderMinutes: number[]; escalateMinutes: number; botName: string; noReplyAction: string } }>('/api/hermes/settings');
   const [reminders, setReminders] = useState('');
   const [botName, setBotName] = useState('');
+  const [noReply, setNoReply] = useState('persona');
   const [escalate, setEscalate] = useState(360);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,6 +148,7 @@ function SettingsCard() {
       setReminders(settings.data.settings.reminderMinutes.join(', '));
       setEscalate(settings.data.settings.escalateMinutes);
       setBotName(settings.data.settings.botName);
+      setNoReply(settings.data.settings.noReplyAction);
     }
   }, [settings.data]);
 
@@ -157,7 +159,7 @@ function SettingsCard() {
     try {
       const list = reminders.split(/[\s,]+/).filter(Boolean).map(Number);
       if (list.some((n) => !Number.isFinite(n))) throw new Error('Los recordatorios deben ser números de minutos separados por comas.');
-      await api('PUT', '/api/hermes/settings', { reminderMinutes: list, escalateMinutes: escalate, botName: botName.trim() });
+      await api('PUT', '/api/hermes/settings', { reminderMinutes: list, escalateMinutes: escalate, botName: botName.trim(), noReplyAction: noReply });
       setSaved(true);
     } catch (err) {
       setError((err as Error).message);
@@ -186,10 +188,16 @@ function SettingsCard() {
           <Field label="Recordatorios de confirmación (minutos)" hint="Separados por comas. Cada uno cuenta desde el mensaje anterior. Ej.: 30, 180">
             <input value={reminders} disabled={!isAdmin} onChange={(e) => setReminders(e.target.value)} />
           </Field>
-          <Field label="Pasar a una persona tras (minutos sin respuesta)" hint="Después del último recordatorio.">
+          <Field label="Esperar tras el último recordatorio (minutos)" hint="Pasado este tiempo sin respuesta se aplica lo que elijas abajo.">
             <input type="number" min={15} max={4320} value={escalate} disabled={!isAdmin} onChange={(e) => setEscalate(Number(e.target.value))} />
           </Field>
         </div>
+        <Field label="Si el cliente no responde" hint={noReply === 'confirmar' ? 'El pedido queda confirmado y listo para despachar, sin escribirle al cliente. Los clientes con riesgo alto de devolución siguen pasando a una persona. Si después el cliente pide corregir o cancelar, el pedido pasa a una persona.' : 'El pedido queda en «Por atender» para que alguien lo llame o lo cancele. No se despacha sin confirmación.'}>
+          <select value={noReply} disabled={!isAdmin} onChange={(e) => setNoReply(e.target.value)} style={{ maxWidth: 420 }}>
+            <option value="persona">Pasarlo a una persona</option>
+            <option value="confirmar">Confirmar el pedido automáticamente</option>
+          </select>
+        </Field>
         {isAdmin && <div><button className="btn primary">Guardar ajustes</button></div>}
       </div>
     </form>

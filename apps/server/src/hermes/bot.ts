@@ -84,7 +84,7 @@ export const TEMPLATES: { key: string; title: string; required: boolean; when: s
   },
   {
     key: 'hermes_recordatorio', title: 'Recordatorio de confirmación', required: true, when: 'Si el cliente no responde la confirmación.',
-    text: 'Hola {{customer_name}}, soy {{agent_name}} otra vez 😊 Tu pedido {{order_code}} sigue esperando tu confirmación, y solo lo despachamos cuando nos dices que sí. ¿Lo enviamos a {{address}}?',
+    text: 'Hola {{customer_name}}, soy {{agent_name}} otra vez 😊 Quiero asegurarme de que tu pedido {{order_code}} te llegue sin problema. ¿Está todo bien para enviarlo a {{address}}?',
     buttons: ['Confirmar pedido', 'Corregir datos', 'Cancelar'],
     sample: { customer_name: 'Laura', agent_name: 'Valentina', order_code: 'H-000123', address: 'Calle 10 # 5-20, barrio Centro, Cali' },
   },
@@ -154,7 +154,7 @@ export const MESSAGES = {
   }),
   recordatorio: (o: Order, agent: string): Outgoing => ({
     template: 'hermes_recordatorio',
-    body: `Hola ${firstName(o.customer_name)}, soy ${agent} otra vez 😊 Tu pedido ${o.code} sigue esperando tu confirmación, y solo lo despachamos cuando nos dices que sí. ¿Lo enviamos a ${o.address}, ${o.city}?`,
+    body: `Hola ${firstName(o.customer_name)}, soy ${agent} otra vez 😊 Quiero asegurarme de que tu pedido ${o.code} te llegue sin problema. ¿Está todo bien para enviarlo a ${o.address}, ${o.city}?`,
     buttons: CONFIRM_BUTTONS,
     params: { customer_name: v(firstName(o.customer_name), 60), agent_name: v(agent, 40), order_code: o.code, address: v(`${o.address}, ${o.city}`) },
   }),
@@ -215,10 +215,10 @@ export function normalizePhone(raw: string): string {
   return digits.length === 10 && digits.startsWith('3') ? `57${digits}` : digits; // celular colombiano sin indicativo
 }
 
-export async function settingsOf(companyId: string): Promise<{ driver: string; reminderMinutes: number[]; escalateMinutes: number; botName: string }> {
-  const { rows } = await db.query(`SELECT driver, reminder_minutes, escalate_minutes, bot_name FROM hermes_settings WHERE company_id = $1`, [companyId]);
+export async function settingsOf(companyId: string): Promise<{ driver: string; reminderMinutes: number[]; escalateMinutes: number; botName: string; noReplyAction: 'persona' | 'confirmar' }> {
+  const { rows } = await db.query(`SELECT driver, reminder_minutes, escalate_minutes, bot_name, no_reply_action FROM hermes_settings WHERE company_id = $1`, [companyId]);
   const r = rows[0];
-  return { driver: r?.driver ?? 'simulado', reminderMinutes: r?.reminder_minutes ?? [30, 180], escalateMinutes: r?.escalate_minutes ?? 360, botName: r?.bot_name ?? '' };
+  return { driver: r?.driver ?? 'simulado', reminderMinutes: r?.reminder_minutes ?? [30, 180], escalateMinutes: r?.escalate_minutes ?? 360, botName: r?.bot_name ?? '', noReplyAction: r?.no_reply_action === 'confirmar' ? 'confirmar' : 'persona' };
 }
 
 export async function getOrder(companyId: string, id: string): Promise<Order | null> {
@@ -407,6 +407,12 @@ export async function confirm(o: Order, actor = 'Cliente'): Promise<void> {
   await send(o, MESSAGES.confirmado(o));
 }
 
+/** El cliente no respondió y la empresa eligió seguir: se confirma sin escribirle (no confirmó nada, no hay qué agradecerle). */
+async function confirmBySilence(o: Order): Promise<void> {
+  await patch(o, { status: 'confirmado', awaiting: null, confirmed_at: new Date().toISOString() });
+  await logEvent(o, 'confirmado', 'Confirmado automáticamente: el cliente no respondió a los avisos');
+}
+
 export async function cancel(o: Order, reason: string, actor = 'Cliente'): Promise<void> {
   if (FINAL_STATUSES.includes(o.status)) return;
   await patch(o, { status: 'cancelado', awaiting: null, attention: false, attention_reason: '', cancelled_at: new Date().toISOString(), cancel_reason: reason });
@@ -545,6 +551,13 @@ export async function handleInbound(
     if (incident) await db.query(`UPDATE hermes_incidents SET customer_choice = 'corrige_direccion', status = 'por_gestionar' WHERE id = $1`, [incident.id]);
     await setAttention(o, 'El cliente corrigió la dirección: avisar a la transportadora');
     await send(o, MESSAGES.novedad_recibida());
+  } else if (o.status === 'confirmado' && (intent === 'CONFIRMAR' || (!intent && YES.test(typed)))) {
+    // Respondió tarde a un pedido que ya se había confirmado (a mano o por falta de respuesta).
+    await logEvent(o, 'confirmado', 'El cliente confirmó por WhatsApp un pedido que ya estaba confirmado', 'Cliente');
+    await send(o, MESSAGES.confirmado(o));
+  } else if (o.status === 'confirmado' && (intent === 'CANCELAR' || intent === 'CORREGIR')) {
+    // El pedido ya pudo salir hacia el operador: lo decide una persona, que puede ver si ya tiene guía.
+    await toHuman(o, intent === 'CANCELAR' ? 'El cliente pide cancelar un pedido ya confirmado: revisar si ya tiene guía antes de cancelarlo' : 'El cliente quiere corregir los datos de un pedido ya confirmado: revisar si ya tiene guía');
   } else if (!FINAL_STATUSES.includes(o.status)) {
     await toHuman(o, 'El cliente escribió y espera respuesta');
   } else {
@@ -578,7 +591,7 @@ async function toHuman(o: Order, reason: string): Promise<void> {
 export async function runReminders(): Promise<void> {
   const { rows } = await db.query(`SELECT * FROM hermes_orders WHERE status = 'por_confirmar' AND awaiting = 'confirmacion' AND NOT attention AND NOT bot_paused`);
   for (const o of rows as Order[]) {
-    const { reminderMinutes, escalateMinutes, botName } = await settingsOf(o.company_id);
+    const { reminderMinutes, escalateMinutes, botName, noReplyAction } = await settingsOf(o.company_id);
     const since = (Date.now() - (o.last_outbound_at ?? o.created_at).getTime()) / 60_000;
     if (o.reminders_sent < reminderMinutes.length) {
       if (since >= reminderMinutes[o.reminders_sent]) {
@@ -587,7 +600,10 @@ export async function runReminders(): Promise<void> {
         await logEvent(o, 'recordatorio', `Recordatorio ${o.reminders_sent} de ${reminderMinutes.length}`);
       }
     } else if (since >= escalateMinutes) {
-      await setAttention(o, 'Sin respuesta tras los recordatorios: llamar o cancelar');
+      // Un cliente con historial de devoluciones no se despacha sin que alguien lo revise.
+      const risky = (o as unknown as { customer_risk?: string }).customer_risk === 'alto';
+      if (noReplyAction === 'confirmar' && !risky) await confirmBySilence(o);
+      else await setAttention(o, risky ? 'Sin respuesta y con riesgo alto de devolución: llamar antes de despachar' : 'Sin respuesta tras los recordatorios: llamar o cancelar');
     }
   }
 }
