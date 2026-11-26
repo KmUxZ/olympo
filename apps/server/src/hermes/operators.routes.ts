@@ -6,7 +6,11 @@ import { z } from 'zod';
 import { db, inIds } from '../db/db.ts';
 import { auditBy, badRequest, guard, notFound, parse } from '../core/http.ts';
 import type { Ctx } from '../core/http.ts';
+import { newToken } from '../core/security.ts';
+import { publicUrl } from '../argos/extension.routes.ts';
 import * as bot from './bot.ts';
+import { handleGuideEvent } from './hoko.ts';
+import type { HokoOperator } from './hoko.ts';
 
 const idParam = z.object({ id: z.uuid() });
 const operatorBody = z.object({
@@ -75,15 +79,19 @@ async function inspectGuides(ctx: Ctx, operator: Operator, rows: z.infer<typeof 
 
 export function operatorRoutes(app: FastifyInstance): void {
   app.get('/api/hermes/operators', guard('admin', 'supervisor'), async (req) => {
+    const isAdmin = req.ctx.role === 'admin';
     const { rows } = await db.query(
-      `SELECT op.id, op.name, op.carrier, op.driver, op.active,
+      `SELECT op.id, op.name, op.carrier, op.driver, op.active, op.webhook_key, op.last_event_at AS "lastEventAt",
+              (SELECT count(*)::int FROM hermes_operator_events e WHERE e.operator_id = op.id AND e.order_id IS NULL AND e.at >= now() - interval '7 days') AS "unmatched",
               (SELECT count(*)::int FROM hermes_orders o WHERE o.operator_id = op.id AND o.status = 'confirmado') AS "toDispatch",
               (SELECT count(*)::int FROM hermes_orders o WHERE o.operator_id = op.id AND o.status IN ('despachado', 'en_reparto', 'novedad')) AS "onTheWay"
          FROM hermes_operators op WHERE op.company_id = $1 ORDER BY op.active DESC, op.name`,
       [req.ctx.companyId],
     );
     const none = await db.query(`SELECT count(*)::int AS n FROM hermes_orders WHERE company_id = $1 AND operator_id IS NULL AND status = 'confirmado'`, [req.ctx.companyId]);
-    return { operators: rows, unassignedToDispatch: none.rows[0].n };
+    // La dirección de avisos lleva una clave: solo la ve el administrador.
+    const operators = rows.map(({ webhook_key, ...op }) => ({ ...op, webhookUrl: isAdmin && webhook_key ? `${publicUrl()}/api/hermes/webhook/hoko/${webhook_key}` : null }));
+    return { operators, unassignedToDispatch: none.rows[0].n };
   });
 
   app.post('/api/hermes/operators', guard('admin'), async (req) => {
@@ -104,6 +112,63 @@ export function operatorRoutes(app: FastifyInstance): void {
     await db.query(`UPDATE hermes_operators SET name = $2, carrier = $3, active = $4 WHERE id = $1`, [id, b.name, b.carrier, b.active]);
     await auditBy(req.ctx, { action: 'hermes.operador_editado', entityType: 'operador', entityId: id, summary: `Editó el operador logístico ${prev.name}${prev.active !== b.active ? (b.active ? ' (activado)' : ' (desactivado)') : ''}` });
     return { ok: true };
+  });
+
+  /** Conecta o desconecta los avisos automáticos del operador. Al conectar se crea la dirección secreta. */
+  app.post('/api/hermes/operators/:id/connect', guard('admin'), async (req) => {
+    const { id } = parse(idParam, req.params);
+    const b = parse(z.object({ driver: z.enum(['manual', 'hoko']) }), req.body);
+    const op = await operatorOf(req.ctx.companyId, id);
+    if (b.driver === 'hoko') await db.query(`UPDATE hermes_operators SET driver = 'hoko', webhook_key = COALESCE(webhook_key, $2) WHERE id = $1`, [id, newToken()]);
+    else await db.query(`UPDATE hermes_operators SET driver = 'manual', webhook_key = NULL WHERE id = $1`, [id]);
+    await auditBy(req.ctx, { action: 'hermes.operador_conexion', entityType: 'operador', entityId: id, summary: b.driver === 'hoko' ? `Activó los avisos automáticos de Hoko en ${op.name}` : `Desconectó los avisos automáticos de ${op.name}` });
+    return { ok: true };
+  });
+
+  /** Últimos avisos recibidos del operador: qué se hizo con cada uno. */
+  app.get('/api/hermes/operators/:id/events', guard('admin', 'supervisor'), async (req) => {
+    const { id } = parse(idParam, req.params);
+    await operatorOf(req.ctx.companyId, id);
+    const { rows } = await db.query(
+      `SELECT e.id, e.at, e.external_ref AS "externalRef", e.guide_number AS "guideNumber", e.state_name AS "stateName", e.phone, e.result, o.code
+         FROM hermes_operator_events e LEFT JOIN hermes_orders o ON o.id = e.order_id
+        WHERE e.operator_id = $1 AND e.company_id = $2 ORDER BY e.at DESC LIMIT 60`,
+      [id, req.ctx.companyId],
+    );
+    return { events: rows };
+  });
+
+  // ───────── Avisos de Hoko ─────────
+  // Hoko no firma sus avisos: la dirección lleva una clave secreta por operador. Sin esa clave no se acepta nada.
+  async function operatorOfKey(key: string): Promise<HokoOperator | null> {
+    if (!/^[A-Za-z0-9_-]{30,80}$/.test(key)) return null;
+    const { rows } = await db.query<HokoOperator>(
+      `SELECT op.id, op.company_id, op.name, op.carrier FROM hermes_operators op JOIN core_companies c ON c.id = op.company_id
+        WHERE op.webhook_key = $1 AND op.driver = 'hoko' AND op.active AND c.status = 'active' AND c.products ? 'hermes'`,
+      [key],
+    );
+    return rows[0] ?? null;
+  }
+  const notFoundReply = { error: { code: 'no_encontrado', message: 'No encontrado.' } };
+  // Los avisos de un mismo operador se procesan de uno en uno, en el orden en que llegan.
+  const lanes = new Map<string, Promise<unknown>>();
+
+  app.get('/api/hermes/webhook/hoko/:key', async (req, reply) => ((await operatorOfKey(String((req.params as { key?: string }).key ?? ''))) ? { ok: true } : reply.status(404).send(notFoundReply)));
+
+  // El aviso puede llegar como JSON o como formulario. El formato de formulario solo se acepta en esta ruta.
+  void app.register(async (scope) => {
+    scope.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string', bodyLimit: 200_000 }, (_req, body, done) => {
+      done(null, Object.fromEntries(new URLSearchParams(String(body))));
+    });
+    scope.post('/api/hermes/webhook/hoko/:key', async (req, reply) => {
+      const op = await operatorOfKey(String((req.params as { key?: string }).key ?? ''));
+      if (!op) return reply.status(404).send(notFoundReply);
+      const event = req.body;
+      const next = (lanes.get(op.id) ?? Promise.resolve()).then(() => handleGuideEvent(op, event)).catch((err) => req.log.error(err, 'aviso de Hoko no procesado'));
+      lanes.set(op.id, next);
+      void next.then(() => { if (lanes.get(op.id) === next) lanes.delete(op.id); });
+      return { ok: true };
+    });
   });
 
   /** La persona encargada decide por qué operador sale cada pedido. Solo pedidos que aún no se despachan. */

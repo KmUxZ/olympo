@@ -3,12 +3,13 @@
 import { useState } from 'react';
 import { useAuth } from '../../auth';
 import { api, useApi } from '../../lib/api';
-import { downloadCsv } from '../../lib/format';
+import { ago, downloadCsv, fmtDateTime } from '../../lib/format';
 import { sheetFileText } from '../../lib/xlsx';
 import { Badge, Empty, ErrorNote, Field, FormModal, Loading, Modal } from '../../components/ui';
 import { parseColumns } from './Import';
 
-export interface Operator { id: string; name: string; carrier: string; driver: string; active: boolean; toDispatch: number; onTheWay: number }
+export interface Operator { id: string; name: string; carrier: string; driver: string; active: boolean; toDispatch: number; onTheWay: number; webhookUrl: string | null; lastEventAt: string | null; unmatched: number }
+interface OperatorEvent { id: string; at: string; externalRef: string; guideNumber: string; stateName: string; phone: string; result: string; code: string | null }
 export interface OperatorList { operators: Operator[]; unassignedToDispatch: number }
 
 /** Tarjeta del panel: qué operadores hay y cuántos pedidos tiene cada uno. Solo el administrador los edita. */
@@ -17,6 +18,7 @@ export function OperatorsCard() {
   const isAdmin = me?.user.role === 'admin';
   const list = useApi<OperatorList>('/api/hermes/operators');
   const [editing, setEditing] = useState<Operator | 'nuevo' | null>(null);
+  const [connecting, setConnecting] = useState<string | null>(null);
   const rows = list.data?.operators ?? [];
   return (
     <div className="card">
@@ -37,10 +39,12 @@ export function OperatorsCard() {
                 <tr key={op.id}>
                   <td><strong>{op.name}</strong>{!op.active && <> <Badge tone="plain">Desactivado</Badge></>}</td>
                   <td>{op.carrier || '—'}</td>
-                  <td className="small">Por archivo o a mano</td>
+                  <td className="small">
+                    {op.driver === 'hoko' ? <><Badge tone="ok">Automáticas</Badge><span className="sub">{op.lastEventAt ? `Último aviso ${ago(op.lastEventAt)}` : 'Aún no llega ningún aviso'}{op.unmatched > 0 ? ` · ${op.unmatched} sin pedido` : ''}</span></> : 'Por archivo o a mano'}
+                  </td>
                   <td>{op.toDispatch}</td>
                   <td>{op.onTheWay}</td>
-                  <td>{isAdmin && <button className="btn sm" onClick={() => setEditing(op)}>Editar</button>}</td>
+                  <td className="nowrap"><button className="btn sm" onClick={() => setConnecting(op.id)}>{op.driver === 'hoko' ? 'Avisos' : isAdmin ? 'Conectar' : 'Avisos'}</button>{isAdmin && <>{' '}<button className="btn sm" onClick={() => setEditing(op)}>Editar</button></>}</td>
                 </tr>
               ))}
             </tbody>
@@ -50,6 +54,7 @@ export function OperatorsCard() {
       {list.data && list.data.unassignedToDispatch > 0 && rows.length > 0 && (
         <p className="card-pad small muted" style={{ margin: 0 }}>{list.data.unassignedToDispatch} pedido(s) por despachar todavía sin operador.</p>
       )}
+      {connecting && rows.find((op) => op.id === connecting) && <ConnectModal operator={rows.find((op) => op.id === connecting)!} isAdmin={isAdmin} onClose={() => setConnecting(null)} onChanged={() => list.reload()} />}
       {editing && <OperatorModal operator={editing === 'nuevo' ? null : editing} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await list.reload(); }} />}
     </div>
   );
@@ -69,6 +74,80 @@ function OperatorModal({ operator, onClose, onSaved }: { operator: Operator | nu
       <Field label="Transportadora (opcional)" hint="Con cuál despacha. Es el nombre que el cliente ve en el aviso de la guía."><input maxLength={60} value={carrier} onChange={(e) => setCarrier(e.target.value)} placeholder="Ej.: Interrapidísimo" /></Field>
       {operator && <div className="checks"><label><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Activo (se puede elegir en pedidos nuevos)</label></div>}
     </FormModal>
+  );
+}
+
+/** Conexión automática: el operador avisa cada cambio de guía a una dirección secreta de Hermes. */
+function ConnectModal({ operator, isAdmin, onClose, onChanged }: { operator: Operator; isAdmin: boolean; onClose: () => void; onChanged: () => Promise<unknown> }) {
+  const on = operator.driver === 'hoko';
+  const events = useApi<{ events: OperatorEvent[] }>(on ? `/api/hermes/operators/${operator.id}/events` : null, 20_000);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  async function set(driver: 'hoko' | 'manual') {
+    setBusy(true);
+    setError(null);
+    try {
+      await api('POST', `/api/hermes/operators/${operator.id}/connect`, { driver });
+      await onChanged();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal title={`${operator.name} · guías automáticas`} onClose={onClose} wide>
+      <div className="modal-body">
+        <ErrorNote error={error} />
+        {!on ? (
+          <>
+            <p>Si este operador es <strong>Hoko</strong>, Hermes puede recibir solo las guías y los estados: Hoko avisa cada vez que una guía cambia y Hermes despacha el pedido, le envía la guía al cliente y registra reparto, novedades, entregas y devoluciones.</p>
+            <p className="small muted">No hace falta guardar aquí tu usuario ni tu contraseña de Hoko. Para los demás operadores, sigue subiendo el archivo de guías en «Pedidos».</p>
+            {isAdmin ? <div className="actions"><button className="btn primary" disabled={busy} onClick={() => void set('hoko')}>Activar avisos de Hoko</button></div> : <p className="small muted">Solo el administrador puede activarlo.</p>}
+          </>
+        ) : (
+          <>
+            {isAdmin && operator.webhookUrl && (
+              <div className="card card-pad stack">
+                <strong>Dirección para registrar en Hoko</strong>
+                <div className="row">
+                  <input readOnly className="mono grow" aria-label="Dirección de avisos" value={operator.webhookUrl} onFocus={(e) => e.target.select()} />
+                  <button className="btn sm" onClick={() => void navigator.clipboard.writeText(operator.webhookUrl!).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }).catch(() => {})}>{copied ? 'Copiado ✓' : 'Copiar'}</button>
+                </div>
+                <ol className="small" style={{ margin: 0, paddingLeft: 18 }}>
+                  <li>En tu panel de Hoko abre la configuración de webhooks de la tienda.</li>
+                  <li>Crea uno nuevo, pega esta dirección y elige la acción <strong>«Reporte de actualización de guía»</strong>.</li>
+                  <li>Genera una guía de prueba: debe aparecer abajo en menos de un minuto.</li>
+                </ol>
+                <p className="xs muted" style={{ margin: 0 }}>Esta dirección es secreta: quien la tenga puede enviar estados falsos. No la compartas. Si se filtra, desconecta y vuelve a activar para cambiarla.</p>
+                <div className="actions"><button className="btn sm danger" disabled={busy} onClick={() => window.confirm('¿Desconectar los avisos de Hoko? La dirección dejará de funcionar.') && void set('manual')}>Desconectar</button></div>
+              </div>
+            )}
+            <h3>Últimos avisos recibidos</h3>
+            {!events.data ? (events.error ? <ErrorNote error={events.error} /> : <Loading />) : events.data.events.length ? (
+              <div className="table-wrap" style={{ maxHeight: '40vh', overflowY: 'auto' }}>
+                <table>
+                  <thead><tr><th>Cuándo</th><th>Orden en Hoko</th><th>Guía</th><th>Estado</th><th>Pedido</th><th>Qué hizo Hermes</th></tr></thead>
+                  <tbody>
+                    {events.data.events.map((e) => (
+                      <tr key={e.id}>
+                        <td className="nowrap small">{fmtDateTime(e.at)}</td>
+                        <td>{e.externalRef || '—'}</td>
+                        <td><span className="mono">{e.guideNumber || '—'}</span></td>
+                        <td>{e.stateName}</td>
+                        <td>{e.code ?? <Badge tone="warn">Sin pedido</Badge>}{!e.code && e.phone && <span className="sub">{e.phone}</span>}</td>
+                        <td className="small" style={{ maxWidth: 320 }}>{e.result}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <Empty>Aún no ha llegado ningún aviso. Llegan cuando Hoko crea o actualiza una guía.</Empty>}
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
 
