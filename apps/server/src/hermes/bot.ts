@@ -84,7 +84,7 @@ export const TEMPLATES: { key: string; title: string; required: boolean; when: s
   },
   {
     key: 'hermes_recordatorio', title: 'Recordatorio de confirmación', required: true, when: 'Si el cliente no responde la confirmación.',
-    text: 'Hola {{customer_name}}, soy {{agent_name}} otra vez 😊 Quiero asegurarme de que tu pedido {{order_code}} te llegue sin problema. ¿Está todo bien para enviarlo a {{address}}?',
+    text: 'Hola {{customer_name}}, soy {{agent_name}} otra vez 😊 Quiero asegurarme de que tu pedido {{order_code}} te llegue sin problema. Lo enviamos a: {{address}}. ¿Está todo bien para despacharlo?',
     buttons: ['Confirmar pedido', 'Corregir datos', 'Cancelar'],
     sample: { customer_name: 'Laura', agent_name: 'Valentina', order_code: 'H-000123', address: 'Calle 10 # 5-20, barrio Centro, Cali' },
   },
@@ -154,7 +154,7 @@ export const MESSAGES = {
   }),
   recordatorio: (o: Order, agent: string): Outgoing => ({
     template: 'hermes_recordatorio',
-    body: `Hola ${firstName(o.customer_name)}, soy ${agent} otra vez 😊 Quiero asegurarme de que tu pedido ${o.code} te llegue sin problema. ¿Está todo bien para enviarlo a ${o.address}, ${o.city}?`,
+    body: `Hola ${firstName(o.customer_name)}, soy ${agent} otra vez 😊 Quiero asegurarme de que tu pedido ${o.code} te llegue sin problema. Lo enviamos a: ${o.address}, ${o.city}. ¿Está todo bien para despacharlo?`,
     buttons: CONFIRM_BUTTONS,
     params: { customer_name: v(firstName(o.customer_name), 60), agent_name: v(agent, 40), order_code: o.code, address: v(`${o.address}, ${o.city}`) },
   }),
