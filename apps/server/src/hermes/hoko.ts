@@ -94,7 +94,8 @@ export async function handleGuideEvent(op: HokoOperator, raw: unknown): Promise<
 
   // Hoko repite avisos con el mismo estado: solo se actúa cuando cambia.
   if (order.operator_state === String(state)) return record('Sin cambios: ese estado ya estaba registrado.');
-  await db.query(`UPDATE hermes_orders SET operator_state = $2 WHERE id = $1`, [order.id, String(state)]);
+  // Si el paquete ya salió de la oficina, se dejan de enviar los recordatorios de oficina.
+  await db.query(`UPDATE hermes_orders SET operator_state = $2, office_at = CASE WHEN $2 = '10' THEN office_at ELSE NULL END WHERE id = $1`, [order.id, String(state)]);
   if (['entregado', 'devuelto', 'cancelado'].includes(order.status)) return record(`El pedido ya estaba cerrado (${order.status}); no se cambió.`);
 
   const fresh = async () => (await bot.getOrder(op.company_id, order!.id))!;

@@ -107,6 +107,12 @@ export const TEMPLATES: { key: string; title: string; required: boolean; when: s
     sample: { customer_name: 'Laura', order_code: 'H-000123', carrier: 'Interrapidísimo', city: 'Cali', tracking_number: '240012345678', payment: 'Ten listos $120.000 para recibirlo' },
   },
   {
+    key: 'hermes_oficina_recordatorio', title: 'Sigue en oficina', required: false, when: 'Si pasan los días y el cliente no ha reclamado el paquete en la oficina.',
+    text: 'Hola {{customer_name}}, tu pedido {{order_code}} te espera hace {{days}} días en la oficina de {{carrier}} en {{city}} 📦 Si no se reclama a tiempo, la transportadora lo devuelve. ¿Vas a pasar por él?',
+    buttons: ['Sí, voy a pasar', 'Ya lo recogí', 'No puedo ir'],
+    sample: { customer_name: 'Laura', order_code: 'H-000123', days: '2', carrier: 'Interrapidísimo', city: 'Cali' },
+  },
+  {
     key: 'hermes_en_reparto', title: 'Sale a reparto', required: false, when: 'El día que el pedido sale a reparto.',
     text: '¡Hoy llega! 🚚 {{customer_name}}, tu pedido {{order_code}} sale a reparto hoy. {{payment}}. Gracias por estar pendiente.',
     buttons: [],
@@ -144,6 +150,11 @@ const CONFIRM_BUTTONS = [
   { label: 'Confirmar pedido', payload: 'CONFIRMAR' },
   { label: 'Corregir datos', payload: 'CORREGIR' },
   { label: 'Cancelar', payload: 'CANCELAR' },
+];
+const OFFICE_BUTTONS = [
+  { label: 'Sí, voy a pasar', payload: 'OFICINA_VOY' },
+  { label: 'Ya lo recogí', payload: 'OFICINA_RECOGIDO' },
+  { label: 'No puedo ir', payload: 'OFICINA_NO' },
 ];
 export const MESSAGES = {
   confirmacion: (o: Order, company: string, agent: string): Outgoing => ({
@@ -185,6 +196,15 @@ export const MESSAGES = {
     body: `Hola ${firstName(o.customer_name)} 📦 Tu pedido ${o.code} ya está listo para que lo recojas en la oficina de ${o.carrier || 'la transportadora'} en ${o.city}.\n\n🔢 Guía: ${o.tracking_number}\n🪪 Lleva tu documento de identidad\n💵 ${deliveryVar(o)}\n\n¡Te esperamos!`,
     params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code, carrier: v(o.carrier || 'la transportadora', 60), city: v(o.city, 80), tracking_number: v(o.tracking_number, 60), payment: deliveryVar(o) },
   }),
+  oficina_recordatorio: (o: Order, days: number): Outgoing => ({
+    template: 'hermes_oficina_recordatorio',
+    body: `Hola ${firstName(o.customer_name)}, tu pedido ${o.code} te espera hace ${days} días en la oficina de ${o.carrier || 'la transportadora'} en ${o.city} 📦 Si no se reclama a tiempo, la transportadora lo devuelve. ¿Vas a pasar por él?`,
+    buttons: OFFICE_BUTTONS,
+    params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code, days: String(days), carrier: v(o.carrier || 'la transportadora', 60), city: v(o.city, 80) },
+  }),
+  oficina_voy: (o: Order): Outgoing => ({ template: 'hermes_oficina_voy', body: `¡Perfecto! 😊 Te esperan en la oficina de ${o.carrier || 'la transportadora'} en ${o.city}. Lleva tu documento de identidad y el número de guía: ${o.tracking_number}.` }),
+  oficina_recogido: (): Outgoing => ({ template: 'hermes_oficina_recogido', body: '¡Qué bueno! 🎉 Gracias por avisarme. Que lo disfrutes.' }),
+  oficina_no: (): Outgoing => ({ template: 'hermes_oficina_no', body: 'Entendido, gracias por avisarme. Ya le paso tu caso al equipo para buscar una solución.' }),
   novedad: (o: Order, type: string): Outgoing => ({
     template: 'hermes_novedad',
     params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code, reason: INCIDENT_REASON[type] ?? INCIDENT_REASON.otro },
@@ -267,7 +287,7 @@ export async function channelOf(companyId: string): Promise<{ driver: string; ch
 const BUTTON_PAYLOADS: Record<string, string> = {};
 const plainLabel = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 /** Si el texto recibido es exactamente el de un botón, devuelve su código. */
-for (const b of [...CONFIRM_BUTTONS, ...(MESSAGES.novedad({ code: '', customer_name: '' } as Order, 'otro').buttons ?? [])]) BUTTON_PAYLOADS[plainLabel(b.label)] = b.payload;
+for (const b of [...CONFIRM_BUTTONS, ...OFFICE_BUTTONS, ...(MESSAGES.novedad({ code: '', customer_name: '' } as Order, 'otro').buttons ?? [])]) BUTTON_PAYLOADS[plainLabel(b.label)] = b.payload;
 export const payloadOfLabel = (text: string): string | undefined => BUTTON_PAYLOADS[plainLabel(text)];
 
 // WhatsApp deja escribir texto libre solo durante 24 horas desde el último mensaje del cliente. Se deja una hora de margen.
@@ -434,6 +454,7 @@ export async function outForDelivery(o: Order, actor: string): Promise<void> {
 
 /** El paquete quedó en una oficina de la transportadora: se le avisa al cliente para que pase por él. Devuelve si el aviso salió. */
 export async function readyForPickup(o: Order, actor: string): Promise<boolean> {
+  await patch(o, { office_at: new Date().toISOString(), office_reminders: 0 });
   await logEvent(o, 'en_oficina', `Disponible para reclamar en la oficina de ${o.carrier || 'la transportadora'}`, actor);
   return (await send(o, MESSAGES.oficina(o))).ok;
 }
@@ -541,6 +562,22 @@ export async function handleInbound(
       await setAttention(o, 'El cliente dice que ya no quiere el pedido');
       await send(o, MESSAGES.novedad_rechazo());
     } else await toHuman(o, 'El cliente respondió a la novedad con un mensaje libre');
+  } else if (o.awaiting === 'oficina' && ['OFICINA_VOY', 'OFICINA_RECOGIDO', 'OFICINA_NO'].includes(intent)) {
+    await patch(o, { awaiting: null });
+    if (intent === 'OFICINA_VOY') {
+      await logEvent(o, 'oficina_respuesta', 'El cliente dice que va a pasar por el paquete', 'Cliente');
+      await send(o, MESSAGES.oficina_voy(o));
+    } else if (intent === 'OFICINA_RECOGIDO') {
+      // No se marca entregado: eso lo confirma la transportadora. Se dejan de enviar recordatorios.
+      await patch(o, { office_at: null });
+      await logEvent(o, 'oficina_respuesta', 'El cliente dice que ya recogió el paquete', 'Cliente');
+      await send(o, MESSAGES.oficina_recogido());
+    } else {
+      await patch(o, { office_at: null });
+      await logEvent(o, 'oficina_respuesta', 'El cliente dice que no puede ir a la oficina', 'Cliente');
+      await setAttention(o, 'El cliente no puede ir a la oficina por el paquete: coordinar otra entrega o la devolución');
+      await send(o, MESSAGES.oficina_no());
+    }
   } else if (o.awaiting === 'direccion_novedad' && typed) {
     const check = checkAddress(typed, o.city);
     if (await stillIncomplete(o, typed, check)) return { orderId: o.id };
@@ -587,8 +624,33 @@ async function toHuman(o: Order, reason: string): Promise<void> {
   if (first) await send(o, MESSAGES.humano());
 }
 
+/** Días en oficina a los que se le recuerda al cliente, y cuántos días después del último se pasa a una persona. */
+const OFFICE_REMINDER_DAYS = [2, 4];
+const OFFICE_ESCALATE_DAYS = 2;
+
+/** Paquetes que siguen esperando en una oficina: se le insiste al cliente y, si no reacciona, lo ve una persona. */
+async function officeReminders(): Promise<void> {
+  const { rows } = await db.query(`SELECT * FROM hermes_orders WHERE status IN ('despachado', 'en_reparto') AND office_at IS NOT NULL AND NOT attention AND NOT bot_paused`);
+  for (const o of rows as (Order & { office_at: Date; office_reminders: number })[]) {
+    const days = (Date.now() - new Date(o.office_at).getTime()) / 86_400_000;
+    const sent = o.office_reminders;
+    if (sent < OFFICE_REMINDER_DAYS.length) {
+      if (days < OFFICE_REMINDER_DAYS[sent]) continue;
+      await patch(o, { office_reminders: sent + 1, awaiting: 'oficina' });
+      await logEvent(o, 'oficina_recordatorio', `Lleva ${Math.floor(days)} días en la oficina: recordatorio ${sent + 1} de ${OFFICE_REMINDER_DAYS.length}`);
+      const res = await send(o, MESSAGES.oficina_recordatorio(o, Math.floor(days)));
+      // Sin plantilla aprobada el recordatorio no sale: que lo llame una persona.
+      if (!res.ok) await setAttention(o, `El paquete lleva ${Math.floor(days)} días en la oficina de la transportadora y no se le pudo recordar al cliente`);
+    } else if (sent === OFFICE_REMINDER_DAYS.length && days >= OFFICE_REMINDER_DAYS[sent - 1] + OFFICE_ESCALATE_DAYS) {
+      await patch(o, { office_reminders: sent + 1 });
+      await setAttention(o, `El paquete lleva ${Math.floor(days)} días en la oficina de la transportadora y el cliente no responde: llamarlo antes de que lo devuelvan`);
+    }
+  }
+}
+
 // ───────── Tarea periódica: recordatorios y casos sin respuesta ─────────
 export async function runReminders(): Promise<void> {
+  await officeReminders();
   const { rows } = await db.query(`SELECT * FROM hermes_orders WHERE status = 'por_confirmar' AND awaiting = 'confirmacion' AND NOT attention AND NOT bot_paused`);
   for (const o of rows as Order[]) {
     const { reminderMinutes, escalateMinutes, botName, noReplyAction } = await settingsOf(o.company_id);
