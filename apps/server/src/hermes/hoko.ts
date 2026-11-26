@@ -8,7 +8,7 @@ import * as bot from './bot.ts';
 export interface HokoOperator { id: string; company_id: string; name: string; carrier: string }
 
 /** Qué significa para Hermes cada estado de guía de Hoko. Un valor desconocido se trata como en tránsito. */
-type Step = 'espera' | 'transito' | 'reparto' | 'novedad' | 'entregado' | 'devuelto' | 'aviso';
+type Step = 'espera' | 'transito' | 'reparto' | 'oficina' | 'novedad' | 'entregado' | 'devuelto' | 'aviso';
 const STATES: Record<number, { step: Step; label: string; note?: string }> = {
   0: { step: 'aviso', label: 'Cancelada', note: 'Hoko canceló la guía de este pedido' },
   1: { step: 'espera', label: 'Activa' },
@@ -20,7 +20,7 @@ const STATES: Record<number, { step: Step; label: string; note?: string }> = {
   7: { step: 'reparto', label: 'En Reparto' },
   8: { step: 'transito', label: 'En Bodega' },
   9: { step: 'transito', label: 'Transito' },
-  10: { step: 'aviso', label: 'Reclamar Oficina', note: 'El paquete está en la oficina de la transportadora para que el cliente lo reclame' },
+  10: { step: 'oficina', label: 'Reclamar Oficina' },
   11: { step: 'devuelto', label: 'Devolución' },
   13: { step: 'espera', label: 'En Proceso' },
   15: { step: 'transito', label: 'En espera de ruta doméstica' },
@@ -124,6 +124,14 @@ export async function handleGuideEvent(op: HokoOperator, raw: unknown): Promise<
       if (!o) return record('El aviso no trae número de guía: no se pudo despachar.');
       if (o.status === 'despachado' || o.status === 'novedad') await bot.outForDelivery(o, op.name);
       return record('En reparto.');
+    }
+    case 'oficina': {
+      const o = await ensureDispatched();
+      if (!o) return record('El aviso no trae número de guía: no se pudo despachar.');
+      if (await bot.readyForPickup(o, op.name)) return record('En oficina: se le avisó al cliente para que lo reclame.');
+      // Sin plantilla aprobada el cliente no se entera: que lo vea una persona.
+      await bot.setAttention(await fresh(), `${op.name}: el paquete está en la oficina de la transportadora y no se le pudo avisar al cliente`);
+      return record('En oficina: no se pudo avisar al cliente; quedó para que una persona lo revise.');
     }
     case 'novedad': {
       const o = await ensureDispatched();

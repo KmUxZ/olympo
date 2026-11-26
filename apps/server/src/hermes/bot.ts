@@ -78,7 +78,7 @@ const INCIDENT_REASON: Record<string, string> = {
 export const TEMPLATES: { key: string; title: string; required: boolean; when: string; text: string; buttons: string[]; sample: Record<string, string> }[] = [
   {
     key: 'hermes_confirmacion', title: 'Confirmación del pedido', required: true, when: 'Al crear el pedido.',
-    text: 'Hola {{customer_name}} 👋 Soy {{agent_name}} de {{company}}. ¡Gracias por tu compra! Ya tengo tu pedido {{order_code}}: {{items}}. {{payment}}. Te lo enviamos a: {{address}}. ¿Me confirmas que todo está bien para despacharlo?',
+    text: 'Hola {{customer_name}} 👋 Soy {{agent_name}} de {{company}}.\n\n¡Gracias por tu compra! Estos son los datos de tu pedido {{order_code}}:\n\n🛍️ Productos: {{items}}\n📍 Dirección: {{address}}\n💵 {{payment}}\n\n¿Me confirmas que todo está bien para despacharlo?',
     buttons: ['Confirmar pedido', 'Corregir datos', 'Cancelar'],
     sample: { customer_name: 'Laura', agent_name: 'Valentina', order_code: 'H-000123', company: 'Mi Tienda', items: '2 fajas talla M', payment: 'Total a pagar al recibir: $120.000', address: 'Calle 10 # 5-20, barrio Centro, Cali' },
   },
@@ -90,7 +90,7 @@ export const TEMPLATES: { key: string; title: string; required: boolean; when: s
   },
   {
     key: 'hermes_guia', title: 'Pedido despachado', required: true, when: 'Al despachar, con la guía.',
-    text: '¡Buenas noticias! 📦 Tu pedido {{order_code}} ya va en camino con {{carrier}}. Tu número de guía es {{tracking_number}}. Te aviso apenas salga a reparto.',
+    text: '¡Buenas noticias! 📦 Tu pedido {{order_code}} ya va en camino.\n\n🚚 Transportadora: {{carrier}}\n🔢 Guía: {{tracking_number}}\n\nTe aviso apenas salga a reparto.',
     buttons: [],
     sample: { order_code: 'H-000123', carrier: 'Interrapidísimo', tracking_number: '240012345678' },
   },
@@ -99,6 +99,12 @@ export const TEMPLATES: { key: string; title: string; required: boolean; when: s
     text: 'Hola {{customer_name}}, te escribo por tu pedido {{order_code}}: {{reason}}. No te preocupes, lo resolvemos juntos. ¿Cómo prefieres que sigamos?',
     buttons: ['Reprogramar entrega', 'Corregir dirección', 'Ya no lo quiero'],
     sample: { customer_name: 'Laura', order_code: 'H-000123', reason: 'la transportadora pasó a entregarlo y no encontró a nadie' },
+  },
+  {
+    key: 'hermes_oficina', title: 'Reclamar en oficina', required: false, when: 'Cuando el paquete queda en una oficina de la transportadora para que el cliente lo recoja.',
+    text: 'Hola {{customer_name}} 📦 Tu pedido {{order_code}} ya está listo para que lo recojas en la oficina de {{carrier}} en {{city}}.\n\n🔢 Guía: {{tracking_number}}\n🪪 Lleva tu documento de identidad\n💵 {{payment}}\n\n¡Te esperamos!',
+    buttons: [],
+    sample: { customer_name: 'Laura', order_code: 'H-000123', carrier: 'Interrapidísimo', city: 'Cali', tracking_number: '240012345678', payment: 'Ten listos $120.000 para recibirlo' },
   },
   {
     key: 'hermes_en_reparto', title: 'Sale a reparto', required: false, when: 'El día que el pedido sale a reparto.',
@@ -142,7 +148,7 @@ const CONFIRM_BUTTONS = [
 export const MESSAGES = {
   confirmacion: (o: Order, company: string, agent: string): Outgoing => ({
     template: 'hermes_confirmacion',
-    body: `Hola ${firstName(o.customer_name)} 👋 Soy ${agent} de ${company}. ¡Gracias por tu compra!\nYa tengo tu pedido ${o.code}: ${itemsText(o)}. ${payLine(o)}\nTe lo enviamos a: ${o.address}, ${o.city}${o.notes ? ` (${o.notes})` : ''}.${missingLine(o)}\n¿Me confirmas que todo está bien para despacharlo?`,
+    body: `Hola ${firstName(o.customer_name)} 👋 Soy ${agent} de ${company}.\n\n¡Gracias por tu compra! Estos son los datos de tu pedido ${o.code}:\n\n🛍️ Productos: ${itemsText(o)}\n📍 Dirección: ${o.address}, ${o.city}${o.notes ? ` (${o.notes})` : ''}\n💵 ${payVar(o)}${missingLine(o)}\n\n¿Me confirmas que todo está bien para despacharlo?`,
     buttons: CONFIRM_BUTTONS,
     params: { customer_name: v(firstName(o.customer_name), 60), agent_name: v(agent, 40), order_code: o.code, company: v(company, 80), items: v(itemsText(o)), payment: payVar(o), address: v(`${o.address}, ${o.city}`) },
   }),
@@ -166,13 +172,18 @@ export const MESSAGES = {
   cancelado: (o: Order): Outgoing => ({ template: 'hermes_cancelado', body: `Entendido, ${firstName(o.customer_name)}. Tu pedido ${o.code} quedó cancelado. Si fue un error, respóndeme por aquí y lo revisamos.`, params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code } }),
   guia: (o: Order): Outgoing => ({
     template: 'hermes_guia',
-    body: `¡Buenas noticias! 📦 Tu pedido ${o.code} ya va en camino${o.carrier ? ` con ${o.carrier}` : ''}. Tu número de guía es ${o.tracking_number}.${o.tracking_url ? ` Puedes rastrearlo aquí: ${o.tracking_url}` : ''} Te aviso apenas salga a reparto.`,
+    body: `¡Buenas noticias! 📦 Tu pedido ${o.code} ya va en camino.\n\n🚚 Transportadora: ${o.carrier || 'la transportadora'}\n🔢 Guía: ${o.tracking_number}${o.tracking_url ? `\n🔗 Rastreo: ${o.tracking_url}` : ''}\n\nTe aviso apenas salga a reparto.`,
     params: { order_code: o.code, carrier: v(o.carrier || 'la transportadora', 60), tracking_number: v(o.tracking_number, 60) },
   }),
   en_reparto: (o: Order): Outgoing => ({
     template: 'hermes_en_reparto',
     body: `¡Hoy llega! 🚚 ${firstName(o.customer_name)}, tu pedido ${o.code} sale a reparto hoy. ${o.payment === 'pagado' ? 'Ten a alguien pendiente para recibirlo.' : `Ten listos ${money(o.total)} para recibirlo.`}`,
     params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code, payment: deliveryVar(o) },
+  }),
+  oficina: (o: Order): Outgoing => ({
+    template: 'hermes_oficina',
+    body: `Hola ${firstName(o.customer_name)} 📦 Tu pedido ${o.code} ya está listo para que lo recojas en la oficina de ${o.carrier || 'la transportadora'} en ${o.city}.\n\n🔢 Guía: ${o.tracking_number}\n🪪 Lleva tu documento de identidad\n💵 ${deliveryVar(o)}\n\n¡Te esperamos!`,
+    params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code, carrier: v(o.carrier || 'la transportadora', 60), city: v(o.city, 80), tracking_number: v(o.tracking_number, 60), payment: deliveryVar(o) },
   }),
   novedad: (o: Order, type: string): Outgoing => ({
     template: 'hermes_novedad',
@@ -413,6 +424,12 @@ export async function outForDelivery(o: Order, actor: string): Promise<void> {
   await patch(o, { status: 'en_reparto', awaiting: null, out_for_delivery_at: new Date().toISOString() });
   await logEvent(o, 'en_reparto', 'Sale a reparto', actor);
   await send(o, MESSAGES.en_reparto(o));
+}
+
+/** El paquete quedó en una oficina de la transportadora: se le avisa al cliente para que pase por él. Devuelve si el aviso salió. */
+export async function readyForPickup(o: Order, actor: string): Promise<boolean> {
+  await logEvent(o, 'en_oficina', `Disponible para reclamar en la oficina de ${o.carrier || 'la transportadora'}`, actor);
+  return (await send(o, MESSAGES.oficina(o))).ok;
 }
 
 export async function reportIncident(o: Order, type: string, description: string, actor: string): Promise<string> {

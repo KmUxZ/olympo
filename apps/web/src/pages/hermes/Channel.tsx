@@ -131,7 +131,7 @@ export function ChannelCard({ onChanged }: { onChanged?: () => void }) {
                     {t.required ? <Badge tone={ids[t.key] ? 'ok' : 'warn'}>Obligatoria</Badge> : <Badge tone="plain">Opcional</Badge>}
                   </td>
                   <td className="small" style={{ minWidth: 260 }}>
-                    {t.text}
+                    <span style={{ whiteSpace: 'pre-wrap', display: 'block' }}>{t.text}</span>
                     {t.buttons.length > 0 && <span className="sub">Botones: {t.buttons.join(' · ')}</span>}
                     <div style={{ marginTop: 6 }}><Copy text={t.text} label="Copiar texto" /></div>
                   </td>
