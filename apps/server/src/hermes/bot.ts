@@ -78,49 +78,49 @@ const INCIDENT_REASON: Record<string, string> = {
 export const TEMPLATES: { key: string; title: string; required: boolean; when: string; text: string; buttons: string[]; sample: Record<string, string> }[] = [
   {
     key: 'hermes_confirmacion', title: 'Confirmación del pedido', required: true, when: 'Al crear el pedido.',
-    text: 'Hola {{customer_name}}, recibimos tu pedido {{order_code}} en {{company}}: {{items}}. {{payment}}. Lo enviaremos a: {{address}}. ¿Confirmas tu pedido?',
+    text: 'Hola {{customer_name}} 👋 Soy {{agent_name}}, asistente virtual de {{company}}. ¡Gracias por tu compra! Ya tengo tu pedido {{order_code}}: {{items}}. {{payment}}. Te lo enviamos a: {{address}}. ¿Me confirmas que todo está bien para despacharlo?',
     buttons: ['Confirmar pedido', 'Corregir datos', 'Cancelar'],
-    sample: { customer_name: 'Laura', order_code: 'H-000123', company: 'Mi Tienda', items: '2 fajas talla M', payment: 'Total a pagar al recibir: $120.000', address: 'Calle 10 # 5-20, barrio Centro, Cali' },
+    sample: { customer_name: 'Laura', agent_name: 'Valentina', order_code: 'H-000123', company: 'Mi Tienda', items: '2 fajas talla M', payment: 'Total a pagar al recibir: $120.000', address: 'Calle 10 # 5-20, barrio Centro, Cali' },
   },
   {
     key: 'hermes_recordatorio', title: 'Recordatorio de confirmación', required: true, when: 'Si el cliente no responde la confirmación.',
-    text: 'Hola {{customer_name}}, tu pedido {{order_code}} sigue pendiente de confirmación. Solo lo despachamos cuando nos confirmas. ¿Lo enviamos a {{address}}?',
+    text: 'Hola {{customer_name}}, soy {{agent_name}} otra vez 😊 Tu pedido {{order_code}} sigue esperando tu confirmación, y solo lo despachamos cuando nos dices que sí. ¿Lo enviamos a {{address}}?',
     buttons: ['Confirmar pedido', 'Corregir datos', 'Cancelar'],
-    sample: { customer_name: 'Laura', order_code: 'H-000123', address: 'Calle 10 # 5-20, barrio Centro, Cali' },
+    sample: { customer_name: 'Laura', agent_name: 'Valentina', order_code: 'H-000123', address: 'Calle 10 # 5-20, barrio Centro, Cali' },
   },
   {
     key: 'hermes_guia', title: 'Pedido despachado', required: true, when: 'Al despachar, con la guía.',
-    text: 'Tu pedido {{order_code}} ya fue despachado con {{carrier}}. Número de guía: {{tracking_number}}. Te avisaremos cuando salga a reparto.',
+    text: '¡Buenas noticias! 📦 Tu pedido {{order_code}} ya va en camino con {{carrier}}. Tu número de guía es {{tracking_number}}. Te aviso apenas salga a reparto.',
     buttons: [],
     sample: { order_code: 'H-000123', carrier: 'Interrapidísimo', tracking_number: '240012345678' },
   },
   {
     key: 'hermes_novedad', title: 'Novedad de entrega', required: true, when: 'Cuando la transportadora reporta un problema.',
-    text: 'Hola {{customer_name}}, hubo una novedad con la entrega de tu pedido {{order_code}}: {{reason}}. ¿Cómo quieres que lo resolvamos?',
+    text: 'Hola {{customer_name}}, te escribo por tu pedido {{order_code}}: {{reason}}. No te preocupes, lo resolvemos juntos. ¿Cómo prefieres que sigamos?',
     buttons: ['Reprogramar entrega', 'Corregir dirección', 'Ya no lo quiero'],
     sample: { customer_name: 'Laura', order_code: 'H-000123', reason: 'la transportadora pasó a entregarlo y no encontró a nadie' },
   },
   {
     key: 'hermes_en_reparto', title: 'Sale a reparto', required: false, when: 'El día que el pedido sale a reparto.',
-    text: 'Hola {{customer_name}}, tu pedido {{order_code}} sale a reparto hoy. {{payment}}. Gracias por estar pendiente.',
+    text: '¡Hoy llega! 🚚 {{customer_name}}, tu pedido {{order_code}} sale a reparto hoy. {{payment}}. Gracias por estar pendiente.',
     buttons: [],
     sample: { customer_name: 'Laura', order_code: 'H-000123', payment: 'Ten listos $120.000 para recibirlo' },
   },
   {
     key: 'hermes_entregado', title: 'Pedido entregado', required: false, when: 'Al marcar el pedido como entregado.',
-    text: 'Hola {{customer_name}}, tu pedido {{order_code}} fue entregado. Gracias por tu compra.',
+    text: '¡Entregado! 🎉 {{customer_name}}, tu pedido {{order_code}} ya está en tus manos. Gracias por confiar en nosotros.',
     buttons: [],
     sample: { customer_name: 'Laura', order_code: 'H-000123' },
   },
   {
     key: 'hermes_confirmado', title: 'Pedido confirmado', required: false, when: 'Cuando una persona del equipo confirma el pedido a mano.',
-    text: 'Listo, {{customer_name}}. Tu pedido {{order_code}} quedó confirmado. Te avisaremos por aquí cuando lo despachemos.',
+    text: '¡Listo, {{customer_name}}! ✅ Tu pedido {{order_code}} quedó confirmado. Te escribo por aquí apenas lo despachemos.',
     buttons: [],
     sample: { customer_name: 'Laura', order_code: 'H-000123' },
   },
   {
     key: 'hermes_cancelado', title: 'Pedido cancelado', required: false, when: 'Cuando una persona del equipo cancela el pedido.',
-    text: 'Hola {{customer_name}}, tu pedido {{order_code}} quedó cancelado. Si fue un error, respóndenos y lo revisamos.',
+    text: 'Hola {{customer_name}}, tu pedido {{order_code}} quedó cancelado. Si fue un error, respóndeme por aquí y lo revisamos.',
     buttons: [],
     sample: { customer_name: 'Laura', order_code: 'H-000123' },
   },
@@ -140,38 +140,38 @@ const CONFIRM_BUTTONS = [
   { label: 'Cancelar', payload: 'CANCELAR' },
 ];
 export const MESSAGES = {
-  confirmacion: (o: Order, company: string): Outgoing => ({
+  confirmacion: (o: Order, company: string, agent: string): Outgoing => ({
     template: 'hermes_confirmacion',
-    body: `Hola ${firstName(o.customer_name)}, recibimos tu pedido ${o.code} en ${company}: ${itemsText(o)}. ${payLine(o)}\nLo enviaremos a: ${o.address}, ${o.city}${o.notes ? ` (${o.notes})` : ''}.${missingLine(o)}\n¿Confirmas tu pedido?`,
+    body: `Hola ${firstName(o.customer_name)} 👋 Soy ${agent}, asistente virtual de ${company}. ¡Gracias por tu compra!\nYa tengo tu pedido ${o.code}: ${itemsText(o)}. ${payLine(o)}\nTe lo enviamos a: ${o.address}, ${o.city}${o.notes ? ` (${o.notes})` : ''}.${missingLine(o)}\n¿Me confirmas que todo está bien para despacharlo?`,
     buttons: CONFIRM_BUTTONS,
-    params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code, company: v(company, 80), items: v(itemsText(o)), payment: payVar(o), address: v(`${o.address}, ${o.city}`) },
+    params: { customer_name: v(firstName(o.customer_name), 60), agent_name: v(agent, 40), order_code: o.code, company: v(company, 80), items: v(itemsText(o)), payment: payVar(o), address: v(`${o.address}, ${o.city}`) },
   }),
-  recordatorio: (o: Order): Outgoing => ({
+  recordatorio: (o: Order, agent: string): Outgoing => ({
     template: 'hermes_recordatorio',
-    body: `Hola ${firstName(o.customer_name)}, tu pedido ${o.code} sigue pendiente de confirmación. Solo lo despachamos cuando nos confirmas. ¿Lo enviamos a ${o.address}, ${o.city}?`,
+    body: `Hola ${firstName(o.customer_name)}, soy ${agent} otra vez 😊 Tu pedido ${o.code} sigue esperando tu confirmación, y solo lo despachamos cuando nos dices que sí. ¿Lo enviamos a ${o.address}, ${o.city}?`,
     buttons: CONFIRM_BUTTONS,
-    params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code, address: v(`${o.address}, ${o.city}`) },
+    params: { customer_name: v(firstName(o.customer_name), 60), agent_name: v(agent, 40), order_code: o.code, address: v(`${o.address}, ${o.city}`) },
   }),
   datos_actualizados: (o: Order): Outgoing => ({
     template: 'hermes_datos_actualizados',
-    body: `Actualizamos la dirección de tu pedido ${o.code}: ${o.address}, ${o.city}. ${payLine(o)}${missingLine(o)} ¿Confirmas?`,
+    body: `¡Perfecto! Ya actualicé la dirección de tu pedido ${o.code}: ${o.address}, ${o.city}. ${payLine(o)}${missingLine(o)} ¿Así sí lo despachamos?`,
     buttons: CONFIRM_BUTTONS,
   }),
-  pedir_direccion: (): Outgoing => ({ template: 'hermes_pedir_direccion', body: 'Claro. Escríbenos la dirección completa en un solo mensaje, así: Calle 10 # 5-20, barrio Centro, apto 201.' }),
+  pedir_direccion: (): Outgoing => ({ template: 'hermes_pedir_direccion', body: 'Claro que sí. Escríbeme la dirección completa en un solo mensaje, así: Calle 10 # 5-20, barrio Centro, apto 201.' }),
   direccion_incompleta: (missing: string[]): Outgoing => ({
     template: 'hermes_direccion_incompleta',
-    body: `Gracias. Para poder despachar aún nos falta ${missing.join(' y ') || 'completar la dirección'}. Escríbela completa así: Calle 10 # 5-20, barrio Centro, apto 201.`,
+    body: `¡Gracias! Para que tu pedido llegue sin problema todavía me falta ${missing.join(' y ') || 'completar la dirección'}. Escríbemela completa así: Calle 10 # 5-20, barrio Centro, apto 201.`,
   }),
-  confirmado: (o: Order): Outgoing => ({ template: 'hermes_confirmado', body: `¡Listo, ${firstName(o.customer_name)}! Tu pedido ${o.code} quedó confirmado. Te avisaremos por aquí cuando lo despachemos.`, params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code } }),
-  cancelado: (o: Order): Outgoing => ({ template: 'hermes_cancelado', body: `Tu pedido ${o.code} quedó cancelado. Si fue un error, respóndenos y lo revisamos.`, params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code } }),
+  confirmado: (o: Order): Outgoing => ({ template: 'hermes_confirmado', body: `¡Listo, ${firstName(o.customer_name)}! ✅ Tu pedido ${o.code} quedó confirmado. Te escribo por aquí apenas lo despachemos.`, params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code } }),
+  cancelado: (o: Order): Outgoing => ({ template: 'hermes_cancelado', body: `Entendido, ${firstName(o.customer_name)}. Tu pedido ${o.code} quedó cancelado. Si fue un error, respóndeme por aquí y lo revisamos.`, params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code } }),
   guia: (o: Order): Outgoing => ({
     template: 'hermes_guia',
-    body: `Tu pedido ${o.code} ya fue despachado${o.carrier ? ` con ${o.carrier}` : ''}. Número de guía: ${o.tracking_number}.${o.tracking_url ? ` Puedes rastrearlo aquí: ${o.tracking_url}` : ''}`,
+    body: `¡Buenas noticias! 📦 Tu pedido ${o.code} ya va en camino${o.carrier ? ` con ${o.carrier}` : ''}. Tu número de guía es ${o.tracking_number}.${o.tracking_url ? ` Puedes rastrearlo aquí: ${o.tracking_url}` : ''} Te aviso apenas salga a reparto.`,
     params: { order_code: o.code, carrier: v(o.carrier || 'la transportadora', 60), tracking_number: v(o.tracking_number, 60) },
   }),
   en_reparto: (o: Order): Outgoing => ({
     template: 'hermes_en_reparto',
-    body: `${firstName(o.customer_name)}, tu pedido ${o.code} sale a reparto hoy. ${o.payment === 'pagado' ? 'Ten a alguien pendiente para recibirlo.' : `Ten listos ${money(o.total)} para recibirlo.`}`,
+    body: `¡Hoy llega! 🚚 ${firstName(o.customer_name)}, tu pedido ${o.code} sale a reparto hoy. ${o.payment === 'pagado' ? 'Ten a alguien pendiente para recibirlo.' : `Ten listos ${money(o.total)} para recibirlo.`}`,
     params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code, payment: deliveryVar(o) },
   }),
   novedad: (o: Order, type: string): Outgoing => ({
@@ -185,17 +185,17 @@ export const MESSAGES = {
         telefono: `La transportadora no logró comunicarse contigo para entregar tu pedido ${o.code}.`,
         zona: `La transportadora tiene dificultades para llegar a la dirección de tu pedido ${o.code}.`,
         otro: `Hubo una novedad con la entrega de tu pedido ${o.code}.`,
-      }[type] + ' ¿Cómo quieres que lo resolvamos?',
+      }[type] + ' No te preocupes, lo resolvemos juntos. ¿Cómo prefieres que sigamos?',
     buttons: [
       { label: 'Reprogramar entrega', payload: 'REPROGRAMAR' },
       { label: 'Corregir dirección', payload: 'CORREGIR_DIR' },
       { label: 'Ya no lo quiero', payload: 'RECHAZAR' },
     ],
   }),
-  novedad_recibida: (): Outgoing => ({ template: 'hermes_novedad_recibida', body: 'Gracias. Ya le informamos a la transportadora y te avisaremos cuando salga de nuevo a reparto.' }),
-  novedad_rechazo: (): Outgoing => ({ template: 'hermes_novedad_rechazo', body: 'Entendido. Una persona de nuestro equipo te escribirá en breve.' }),
-  entregado: (o: Order): Outgoing => ({ template: 'hermes_entregado', body: `¡Tu pedido ${o.code} fue entregado! Gracias por tu compra, ${firstName(o.customer_name)}.`, params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code } }),
-  humano: (): Outgoing => ({ template: 'hermes_humano', body: 'Gracias por tu mensaje. Una persona de nuestro equipo te responderá en breve.' }),
+  novedad_recibida: (): Outgoing => ({ template: 'hermes_novedad_recibida', body: '¡Gracias! Ya le avisé a la transportadora y te escribo apenas salga de nuevo a reparto.' }),
+  novedad_rechazo: (): Outgoing => ({ template: 'hermes_novedad_rechazo', body: 'Entendido, gracias por avisarme. Una persona de nuestro equipo te escribirá en breve.' }),
+  entregado: (o: Order): Outgoing => ({ template: 'hermes_entregado', body: `¡Entregado! 🎉 ${firstName(o.customer_name)}, tu pedido ${o.code} ya está en tus manos. Gracias por confiar en nosotros.`, params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code } }),
+  humano: (): Outgoing => ({ template: 'hermes_humano', body: 'Gracias por escribirme. Le paso tu mensaje a una persona de nuestro equipo para que te responda en breve.' }),
 };
 
 // ───────── Utilidades ─────────
@@ -204,10 +204,10 @@ export function normalizePhone(raw: string): string {
   return digits.length === 10 && digits.startsWith('3') ? `57${digits}` : digits; // celular colombiano sin indicativo
 }
 
-export async function settingsOf(companyId: string): Promise<{ driver: string; reminderMinutes: number[]; escalateMinutes: number }> {
-  const { rows } = await db.query(`SELECT driver, reminder_minutes, escalate_minutes FROM hermes_settings WHERE company_id = $1`, [companyId]);
+export async function settingsOf(companyId: string): Promise<{ driver: string; reminderMinutes: number[]; escalateMinutes: number; botName: string }> {
+  const { rows } = await db.query(`SELECT driver, reminder_minutes, escalate_minutes, bot_name FROM hermes_settings WHERE company_id = $1`, [companyId]);
   const r = rows[0];
-  return { driver: r?.driver ?? 'simulado', reminderMinutes: r?.reminder_minutes ?? [30, 180], escalateMinutes: r?.escalate_minutes ?? 360 };
+  return { driver: r?.driver ?? 'simulado', reminderMinutes: r?.reminder_minutes ?? [30, 180], escalateMinutes: r?.escalate_minutes ?? 360, botName: r?.bot_name ?? '' };
 }
 
 export async function getOrder(companyId: string, id: string): Promise<Order | null> {
@@ -376,11 +376,16 @@ export async function recordStaffMessage(companyId: string, rawPhone: string, bo
 async function companyName(companyId: string): Promise<string> {
   return (await db.query(`SELECT name FROM core_companies WHERE id = $1`, [companyId])).rows[0]?.name ?? '';
 }
+/** Nombre con el que el bot se presenta. Si la empresa no eligió uno, usa uno neutro. */
+const DEFAULT_AGENT = 'Hermes';
+async function agentName(companyId: string): Promise<string> {
+  return (await settingsOf(companyId)).botName || DEFAULT_AGENT;
+}
 
 // ───────── Acciones sobre un pedido ─────────
 export async function startConfirmation(o: Order): Promise<void> {
   await patch(o, { awaiting: 'confirmacion' });
-  await send(o, MESSAGES.confirmacion(o, await companyName(o.company_id)));
+  await send(o, MESSAGES.confirmacion(o, await companyName(o.company_id), await agentName(o.company_id)));
   await logEvent(o, 'confirmacion_enviada', 'Se pidió confirmación al cliente');
 }
 
@@ -556,11 +561,11 @@ async function toHuman(o: Order, reason: string): Promise<void> {
 export async function runReminders(): Promise<void> {
   const { rows } = await db.query(`SELECT * FROM hermes_orders WHERE status = 'por_confirmar' AND awaiting = 'confirmacion' AND NOT attention AND NOT bot_paused`);
   for (const o of rows as Order[]) {
-    const { reminderMinutes, escalateMinutes } = await settingsOf(o.company_id);
+    const { reminderMinutes, escalateMinutes, botName } = await settingsOf(o.company_id);
     const since = (Date.now() - (o.last_outbound_at ?? o.created_at).getTime()) / 60_000;
     if (o.reminders_sent < reminderMinutes.length) {
       if (since >= reminderMinutes[o.reminders_sent]) {
-        await send(o, MESSAGES.recordatorio(o));
+        await send(o, MESSAGES.recordatorio(o, botName || DEFAULT_AGENT));
         await patch(o, { reminders_sent: o.reminders_sent + 1 });
         await logEvent(o, 'recordatorio', `Recordatorio ${o.reminders_sent} de ${reminderMinutes.length}`);
       }
