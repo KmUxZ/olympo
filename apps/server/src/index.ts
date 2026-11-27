@@ -24,6 +24,7 @@ import { hermesRoutes } from './hermes/routes.ts';
 import { channelRoutes } from './hermes/channel.routes.ts';
 import { operatorRoutes } from './hermes/operators.routes.ts';
 import { trackRoutes } from './hermes/track.routes.ts';
+import { officeRoutes } from './hermes/office.routes.ts';
 import { athenaRoutes } from './athena/routes.ts';
 import { zeusRoutes } from './zeus/routes.ts';
 import { startJobs } from './argos/jobs.ts';
@@ -88,6 +89,7 @@ hermesRoutes(app);
 channelRoutes(app);
 operatorRoutes(app);
 trackRoutes(app);
+officeRoutes(app);
 athenaRoutes(app);
 zeusRoutes(app);
 

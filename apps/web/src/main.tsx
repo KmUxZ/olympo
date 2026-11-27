@@ -25,6 +25,7 @@ import { HermesOrders } from './pages/hermes/Orders';
 import { HermesChats } from './pages/hermes/Chats';
 import { HermesBlocked } from './pages/hermes/Blocked';
 import { HermesIncidents } from './pages/hermes/Incidents';
+import { HermesOffice } from './pages/hermes/Office';
 import { HermesPanel } from './pages/hermes/Panel';
 import { AthenaChats } from './pages/athena/Chats';
 import { AthenaCatalog } from './pages/athena/Catalog';
@@ -105,6 +106,7 @@ function App() {
             <Route path="/hermes/chats" element={<Only roles={['admin', 'supervisor']}><HermesChats /></Only>} />
             <Route path="/hermes/pedidos" element={<HermesOrders />} />
             <Route path="/hermes/novedades" element={<Only roles={['admin', 'supervisor']}><HermesIncidents /></Only>} />
+            <Route path="/hermes/oficina" element={<Only roles={['admin', 'supervisor']}><HermesOffice /></Only>} />
             <Route path="/hermes/bloqueados" element={<Only roles={['admin', 'supervisor']}><HermesBlocked /></Only>} />
             <Route path="/hermes/panel" element={<Only roles={['admin', 'supervisor']}><HermesPanel /></Only>} />
           </>

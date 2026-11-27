@@ -35,7 +35,7 @@ export const STEPS = ['por_confirmar', 'confirmado', 'despachado', 'en_reparto',
 export const EVENT_LABEL: Record<string, string> = {
   bot_pausado: 'Una persona tomó la conversación', bot_reanudado: 'La conversación volvió al bot', direccion_incompleta: 'Dirección incompleta', direccion_por_revisar: 'Dirección por revisar',
   creado: 'Pedido creado', confirmacion_enviada: 'Confirmación enviada', recordatorio: 'Recordatorio', confirmado: 'Confirmado', cancelado: 'Cancelado',
-  operador_asignado: 'Operador logístico', en_oficina: 'Para reclamar en oficina', oficina_recordatorio: 'Recordatorio de oficina', oficina_respuesta: 'Respuesta sobre la oficina', despachado: 'Despachado', en_reparto: 'En reparto', novedad: 'Novedad', novedad_gestionada: 'Novedad gestionada', entregado: 'Entregado', devuelto: 'Devuelto',
+  operador_asignado: 'Operador logístico', en_oficina: 'Para reclamar en oficina', oficina_recordatorio: 'Recordatorio de oficina', oficina_respuesta: 'Respuesta sobre la oficina', oficina_gestion: 'Gestión de oficina', despachado: 'Despachado', en_reparto: 'En reparto', novedad: 'Novedad', novedad_gestionada: 'Novedad gestionada', entregado: 'Entregado', devuelto: 'Devuelto',
   atencion: 'Requiere atención', atendido: 'Atendido', direccion_corregida: 'Dirección corregida',
   correccion_pedida: 'Corrección pedida a la vendedora', correccion_retirada: 'Corrección retirada', corregido: 'Datos corregidos por la vendedora',
 };
