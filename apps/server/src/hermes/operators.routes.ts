@@ -10,6 +10,8 @@ import { newToken } from '../core/security.ts';
 import { publicUrl } from '../argos/extension.routes.ts';
 import * as bot from './bot.ts';
 import { handleGuideEvent } from './hoko.ts';
+import * as hokoApi from './hoko-api.ts';
+import { encryptSecret } from '../core/secrets.ts';
 import type { HokoOperator } from './hoko.ts';
 
 const idParam = z.object({ id: z.uuid() });
@@ -81,7 +83,7 @@ export function operatorRoutes(app: FastifyInstance): void {
   app.get('/api/hermes/operators', guard('admin', 'supervisor'), async (req) => {
     const isAdmin = req.ctx.role === 'admin';
     const { rows } = await db.query(
-      `SELECT op.id, op.name, op.carrier, op.driver, op.active, op.webhook_key, op.last_event_at AS "lastEventAt",
+      `SELECT op.id, op.name, op.carrier, op.driver, op.active, op.webhook_key, op.last_event_at AS "lastEventAt", op.api_email, (op.api_password IS NOT NULL) AS "hasAccount",
               (SELECT count(*)::int FROM hermes_operator_events e WHERE e.operator_id = op.id AND e.order_id IS NULL AND e.at >= now() - interval '7 days') AS "unmatched",
               (SELECT count(*)::int FROM hermes_orders o WHERE o.operator_id = op.id AND o.status = 'confirmado') AS "toDispatch",
               (SELECT count(*)::int FROM hermes_orders o WHERE o.operator_id = op.id AND o.status IN ('despachado', 'en_reparto', 'novedad')) AS "onTheWay"
@@ -90,7 +92,7 @@ export function operatorRoutes(app: FastifyInstance): void {
     );
     const none = await db.query(`SELECT count(*)::int AS n FROM hermes_orders WHERE company_id = $1 AND operator_id IS NULL AND status = 'confirmado'`, [req.ctx.companyId]);
     // La dirección de avisos lleva una clave: solo la ve el administrador.
-    const operators = rows.map(({ webhook_key, ...op }) => ({ ...op, webhookUrl: isAdmin && webhook_key ? `${publicUrl()}/api/hermes/webhook/hoko/${webhook_key}` : null }));
+    const operators = rows.map(({ webhook_key, api_email, ...op }) => ({ ...op, accountEmail: isAdmin ? (api_email ?? '') : '', webhookUrl: isAdmin && webhook_key ? `${publicUrl()}/api/hermes/webhook/hoko/${webhook_key}` : null }));
     return { operators, unassignedToDispatch: none.rows[0].n };
   });
 
@@ -122,6 +124,30 @@ export function operatorRoutes(app: FastifyInstance): void {
     if (b.driver === 'hoko') await db.query(`UPDATE hermes_operators SET driver = 'hoko', webhook_key = COALESCE(webhook_key, $2) WHERE id = $1`, [id, newToken()]);
     else await db.query(`UPDATE hermes_operators SET driver = 'manual', webhook_key = NULL WHERE id = $1`, [id]);
     await auditBy(req.ctx, { action: 'hermes.operador_conexion', entityType: 'operador', entityId: id, summary: b.driver === 'hoko' ? `Activó los avisos automáticos de Hoko en ${op.name}` : `Desconectó los avisos automáticos de ${op.name}` });
+    return { ok: true };
+  });
+
+  /** Guarda la cuenta de Hoko del operador (para consultar el PDF de cada guía). Antes comprueba que Hoko la acepte. */
+  app.put('/api/hermes/operators/:id/account', guard('admin'), async (req) => {
+    const { id } = parse(idParam, req.params);
+    const b = parse(z.object({ email: z.email().max(200), password: z.string().min(1).max(200) }), req.body);
+    const op = await operatorOf(req.ctx.companyId, id);
+    let token: string;
+    try {
+      token = await hokoApi.login(b.email, b.password);
+    } catch (err) {
+      throw badRequest((err as Error).message, err instanceof hokoApi.HokoError && err.code === 'credenciales' ? 'credenciales_no_validas' : 'operador_no_responde');
+    }
+    await db.query(`UPDATE hermes_operators SET api_email = $2, api_password = $3, api_token = $4 WHERE id = $1`, [id, b.email, encryptSecret(b.password), encryptSecret(token)]);
+    await auditBy(req.ctx, { action: 'hermes.operador_cuenta', entityType: 'operador', entityId: id, summary: `Conectó la cuenta de Hoko en ${op.name}` });
+    return { ok: true };
+  });
+
+  app.delete('/api/hermes/operators/:id/account', guard('admin'), async (req) => {
+    const { id } = parse(idParam, req.params);
+    const op = await operatorOf(req.ctx.companyId, id);
+    await db.query(`UPDATE hermes_operators SET api_email = NULL, api_password = NULL, api_token = NULL WHERE id = $1`, [id]);
+    await auditBy(req.ctx, { action: 'hermes.operador_cuenta', entityType: 'operador', entityId: id, summary: `Quitó la cuenta de Hoko de ${op.name}` });
     return { ok: true };
   });
 

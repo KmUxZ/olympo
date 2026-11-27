@@ -8,7 +8,7 @@ import { sheetFileText } from '../../lib/xlsx';
 import { Badge, Empty, ErrorNote, Field, FormModal, Loading, Modal } from '../../components/ui';
 import { parseColumns } from './Import';
 
-export interface Operator { id: string; name: string; carrier: string; driver: string; active: boolean; toDispatch: number; onTheWay: number; webhookUrl: string | null; lastEventAt: string | null; unmatched: number }
+export interface Operator { id: string; name: string; carrier: string; driver: string; active: boolean; toDispatch: number; onTheWay: number; webhookUrl: string | null; lastEventAt: string | null; unmatched: number; hasAccount: boolean; accountEmail: string }
 interface OperatorEvent { id: string; at: string; externalRef: string; guideNumber: string; stateName: string; phone: string; result: string; code: string | null }
 export interface OperatorList { operators: Operator[]; unassignedToDispatch: number }
 
@@ -84,6 +84,37 @@ function ConnectModal({ operator, isAdmin, onClose, onChanged }: { operator: Ope
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
+  async function saveAccount() {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await api('PUT', `/api/hermes/operators/${operator.id}/account`, { email: email.trim(), password });
+      setPassword('');
+      setNotice('Cuenta conectada. Las guías nuevas saldrán con el enlace al PDF.');
+      await onChanged();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function removeAccount() {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await api('DELETE', `/api/hermes/operators/${operator.id}/account`);
+      await onChanged();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function set(driver: 'hoko' | 'manual') {
     setBusy(true);
     setError(null);
@@ -122,6 +153,33 @@ function ConnectModal({ operator, isAdmin, onClose, onChanged }: { operator: Ope
                 </ol>
                 <p className="xs muted" style={{ margin: 0 }}>Esta dirección es secreta: quien la tenga puede enviar estados falsos. No la compartas. Si se filtra, desconecta y vuelve a activar para cambiarla.</p>
                 <div className="actions"><button className="btn sm danger" disabled={busy} onClick={() => window.confirm('¿Desconectar los avisos de Hoko? La dirección dejará de funcionar.') && void set('manual')}>Desconectar</button></div>
+              </div>
+            )}
+            {notice && <div className="alert ok" role="status">{notice}</div>}
+            {isAdmin && (
+              <div className="card card-pad stack">
+                <div className="row">
+                  <strong className="grow">PDF de la guía en el mensaje</strong>
+                  {operator.hasAccount ? <Badge tone="ok">Cuenta conectada</Badge> : <Badge tone="plain">Sin conectar</Badge>}
+                </div>
+                <p className="small muted" style={{ margin: 0 }}>
+                  Para que el mensaje de la guía lleve el enlace a su PDF, Hermes necesita entrar a Hoko con la cuenta de esta tienda y pedirlo. La contraseña se guarda cifrada y no se vuelve a mostrar.
+                  También debe estar aprobada la plantilla <span className="mono">hermes_guia_pdf</span>.
+                </p>
+                {operator.hasAccount ? (
+                  <div className="row">
+                    <span className="small grow">Conectada como <strong>{operator.accountEmail}</strong></span>
+                    <button className="btn sm danger" disabled={busy} onClick={() => window.confirm('¿Quitar la cuenta de Hoko? Los mensajes de guía volverán a salir sin el enlace al PDF.') && void removeAccount()}>Quitar cuenta</button>
+                  </div>
+                ) : (
+                  <form className="stack" onSubmit={(e) => { e.preventDefault(); void saveAccount(); }}>
+                    <div className="row">
+                      <div className="grow"><Field label="Correo de la cuenta de Hoko"><input type="email" required autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} /></Field></div>
+                      <div className="grow"><Field label="Contraseña de Hoko"><input type="password" required autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} /></Field></div>
+                    </div>
+                    <div><button className="btn primary sm" disabled={busy || !email.trim() || !password}>{busy ? 'Comprobando…' : 'Conectar cuenta'}</button></div>
+                  </form>
+                )}
               </div>
             )}
             <h3>Últimos avisos recibidos</h3>

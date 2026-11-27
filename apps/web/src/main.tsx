@@ -22,7 +22,6 @@ import { Messages } from './pages/Messages';
 import { Coaching } from './pages/Coaching';
 import { Quality } from './pages/Quality';
 import { HermesOrders } from './pages/hermes/Orders';
-import { TrackPage } from './pages/hermes/Track';
 import { HermesChats } from './pages/hermes/Chats';
 import { HermesBlocked } from './pages/hermes/Blocked';
 import { HermesIncidents } from './pages/hermes/Incidents';
@@ -73,8 +72,6 @@ function Only({ roles, children }: { roles: Role[]; children: React.ReactNode })
 
 function App() {
   const { me, loading } = useAuth();
-  // Página pública de rastreo: la abre el cliente desde WhatsApp, sin cuenta.
-  if (window.location.pathname.startsWith('/r/')) return <TrackPage />;
   if (loading) return <Splash />;
   if (!me) return <Login />;
   if (me.user.mustChangePassword) return <ChangePassword forced />;

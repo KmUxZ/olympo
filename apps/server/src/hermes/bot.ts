@@ -97,10 +97,10 @@ export const TEMPLATES: { key: string; title: string; required: boolean; when: s
     sample: { order_code: 'H-000123', carrier: 'Interrapidísimo', tracking_number: '240012345678' },
   },
   {
-    key: 'hermes_guia_rastreo', title: 'Pedido despachado, con enlace de rastreo', required: false, when: 'Al despachar. Si está aprobada, se usa en lugar de «Pedido despachado».',
-    text: '¡Buenas noticias! 📦 Tu pedido {{order_code}} ya va en camino.\n\n🚚 Transportadora: {{carrier}}\n🔢 Guía: {{tracking_number}}\n🔗 Sigue tu pedido aquí: {{tracking_url}}\n\nTe aviso apenas salga a reparto.',
+    key: 'hermes_guia_pdf', title: 'Pedido despachado, con el PDF de la guía', required: false, when: 'Al despachar, cuando el operador tiene su cuenta conectada. Si está aprobada, se usa en lugar de «Pedido despachado».',
+    text: '¡Buenas noticias! 📦 Tu pedido {{order_code}} ya va en camino.\n\n🚚 Transportadora: {{carrier}}\n🔢 Guía: {{tracking_number}}\n📄 Ábrela aquí: {{guide_url}}\n\nTe aviso apenas salga a reparto.',
     buttons: [],
-    sample: { order_code: 'H-000123', carrier: 'Interrapidísimo', tracking_number: '240012345678', tracking_url: `${publicUrl()}/r/Ab3xK9pQ2mZt7LwD` },
+    sample: { order_code: 'H-000123', carrier: 'Interrapidísimo', tracking_number: '240012345678', guide_url: `${publicUrl()}/g/Ab3xK9pQ2mZt7LwD` },
   },
   {
     key: 'hermes_novedad', title: 'Novedad de entrega', required: true, when: 'Cuando la transportadora reporta un problema.',
@@ -189,11 +189,11 @@ export const MESSAGES = {
   }),
   confirmado: (o: Order): Outgoing => ({ template: 'hermes_confirmado', body: `¡Listo, ${firstName(o.customer_name)}! ✅ Tu pedido ${o.code} quedó confirmado. Te escribo por aquí apenas lo despachemos.`, params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code } }),
   cancelado: (o: Order): Outgoing => ({ template: 'hermes_cancelado', body: `Entendido, ${firstName(o.customer_name)}. Tu pedido ${o.code} quedó cancelado. Si fue un error, respóndeme por aquí y lo revisamos.`, params: { customer_name: v(firstName(o.customer_name), 60), order_code: o.code } }),
-  /** `link`: la página de rastreo del pedido. `withLink`: usar la plantilla que lleva el enlace (si la empresa la tiene aprobada). */
+  /** `link`: enlace al PDF de la guía. `withLink`: usar la plantilla que lleva el enlace (si la empresa la tiene aprobada). */
   guia: (o: Order, link = '', withLink = false): Outgoing => ({
-    template: withLink ? 'hermes_guia_rastreo' : 'hermes_guia',
-    body: `¡Buenas noticias! 📦 Tu pedido ${o.code} ya va en camino.\n\n🚚 Transportadora: ${o.carrier || 'la transportadora'}\n🔢 Guía: ${o.tracking_number}${link ? `\n🔗 Sigue tu pedido aquí: ${link}` : ''}\n\nTe aviso apenas salga a reparto.`,
-    params: { order_code: o.code, carrier: v(o.carrier || 'la transportadora', 60), tracking_number: v(o.tracking_number, 60), ...(withLink ? { tracking_url: link } : {}) },
+    template: withLink ? 'hermes_guia_pdf' : 'hermes_guia',
+    body: `¡Buenas noticias! 📦 Tu pedido ${o.code} ya va en camino.\n\n🚚 Transportadora: ${o.carrier || 'la transportadora'}\n🔢 Guía: ${o.tracking_number}${link ? `\n📄 Ábrela aquí: ${link}` : ''}\n\nTe aviso apenas salga a reparto.`,
+    params: { order_code: o.code, carrier: v(o.carrier || 'la transportadora', 60), tracking_number: v(o.tracking_number, 60), ...(withLink ? { guide_url: link } : {}) },
   }),
   en_reparto: (o: Order): Outgoing => ({
     template: 'hermes_en_reparto',
@@ -449,22 +449,33 @@ export async function cancel(o: Order, reason: string, actor = 'Cliente'): Promi
   await send(o, MESSAGES.cancelado(o));
 }
 
-/** Enlace público de rastreo del pedido. La clave se crea la primera vez y no cambia. */
-export async function trackingLink(o: Order): Promise<string> {
+/** Clave pública del pedido para su enlace al PDF de la guía. Se crea la primera vez y no cambia. */
+async function publicToken(o: Order): Promise<string> {
   let token = (o as Order & { track_token?: string | null }).track_token;
   if (!token) {
     token = randomBytes(12).toString('base64url');
     await patch(o, { track_token: token });
   }
-  return `${publicUrl()}/r/${token}`;
+  return token;
+}
+/**
+ * Enlace que abre el PDF de la guía. Solo existe cuando el pedido salió por un operador con su cuenta conectada
+ * y ya tiene número de orden allá; si no, devuelve cadena vacía y el mensaje sale sin enlace.
+ */
+export async function guideLink(o: Order): Promise<string> {
+  const { rows } = await db.query(
+    `SELECT 1 FROM hermes_orders o JOIN hermes_operators op ON op.id = o.operator_id WHERE o.id = $1 AND o.operator_ref <> '' AND op.api_password IS NOT NULL`,
+    [o.id],
+  );
+  return rows.length ? `${publicUrl()}/g/${await publicToken(o)}` : '';
 }
 
 export async function dispatch(o: Order, data: { carrier: string; trackingNumber: string; trackingUrl: string }, actor: string): Promise<void> {
   await patch(o, { status: 'despachado', awaiting: null, carrier: data.carrier, tracking_number: data.trackingNumber, tracking_url: data.trackingUrl, dispatched_at: new Date().toISOString() });
   await logEvent(o, 'despachado', `${data.carrier} · guía ${data.trackingNumber}`, actor);
-  const link = await trackingLink(o);
+  const link = await guideLink(o);
   const { templates } = await channelOf(o.company_id);
-  await send(o, MESSAGES.guia(o, link, Boolean(templates.hermes_guia_rastreo)));
+  await send(o, MESSAGES.guia(o, link, Boolean(link && templates.hermes_guia_pdf)));
 }
 
 export async function outForDelivery(o: Order, actor: string): Promise<void> {
