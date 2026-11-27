@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../auth';
 import { api, useApi } from '../../lib/api';
 import { fmtDateTime } from '../../lib/format';
+import { ExportModal } from './Export';
 import { Badge, Empty, ErrorNote, Field, FormModal, Freshness, Loading, PageHero } from '../../components/ui';
 import { itemsLabel, money, OrderDetailModal, ORDER_STATUS, ValidationBox } from './shared';
 import type { Validation } from './shared';
@@ -32,6 +33,7 @@ function ManageOrders() {
   const [chosen, setChosen] = useState<string[]>([]);
   const [target, setTarget] = useState('');
   const [guides, setGuides] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ops = useApi<OperatorList>('/api/hermes/operators');
   const operators = ops.data?.operators ?? [];
@@ -81,11 +83,13 @@ function ManageOrders() {
       >
         <button className="btn primary" onClick={() => setCreating(true)}>Nuevo pedido</button>
         {me!.user.role !== 'seller' && <button className="btn" onClick={() => setImporting(true)}>Importar en lote</button>}
+        {operators.some((op) => op.active) && <button className="btn" onClick={() => setExporting(true)}>Descargar para Hoko</button>}
         {operators.some((op) => op.active) && <button className="btn" onClick={() => setGuides(true)}>Subir guías</button>}
         <Freshness updatedAt={list.updatedAt} error={list.error} />
       </PageHero>
       {notice && <div className="alert ok" role="status">{notice}</div>}
       <ErrorNote error={error} />
+      {exporting && <ExportModal operators={operators} onClose={() => setExporting(false)} onDone={(message) => { setExporting(false); setNotice(message); void Promise.all([list.reload(), ops.reload()]); }} />}
 
       <div className="row" style={{ flexWrap: 'wrap' }}>
         <div className="tabs grow" role="tablist" style={{ flexWrap: 'wrap', minWidth: 'min(100%, 560px)' }}>
