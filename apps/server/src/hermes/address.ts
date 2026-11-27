@@ -78,16 +78,20 @@ const VIA_NAMES: Record<string, string> = {
 };
 const tidy = (n: string) => n.replace(/\s+/g, ' ').trim().replace(/^(\d+)\s?([a-z])\b/i, (_m, d, l) => `${d}${l.toUpperCase()}`);
 
+// «carrera55b#183-36»: mucha gente pega la vía al número. Se separa para que se reconozca igual.
+const GLUED_VIA_RE = new RegExp(String.raw`\b${VIA}(?=\d)`, 'gi');
+const unglue = (text: string) => text.replace(GLUED_VIA_RE, '$1 ');
+
 /** Une la dirección y el barrio (que en los formularios va en su propio campo) en un solo texto. */
 export function composeAddress(address: string, neighborhood?: string | null): string {
-  const a = address.replace(/\s+/g, ' ').trim();
+  const a = unglue(address).replace(/\s+/g, ' ').trim();
   const n = (neighborhood ?? '').replace(/\s+/g, ' ').trim().replace(/^barrio\s+/i, '');
   if (!n || plain(a).includes(plain(n))) return a;
   return `${a}, barrio ${n}`;
 }
 
 export function checkAddress(rawAddress: string, rawCity: string): AddressCheck {
-  const address = rawAddress.replace(/\s+/g, ' ').trim();
+  const address = unglue(rawAddress).replace(/\s+/g, ' ').trim();
   const issues: Issue[] = [];
   const missing: string[] = [];
   // Los datos obligatorios (vía, número, barrio, apartamento si hay edificio, ciudad) son errores:
