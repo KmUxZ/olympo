@@ -48,7 +48,7 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
   const canManage = me!.user.role !== 'seller';
   const detail = useApi(`/api/hermes/orders/${orderId}`, 5000);
   const [panel, setPanel] = useState<'despachar' | 'novedad' | 'cancelar' | null>(null);
-  const operators = useApi<{ operators: { id: string; name: string; carrier: string; active: boolean }[] }>(canManage ? '/api/hermes/operators' : null);
+  const operators = useApi<{ operators: { id: string; name: string; carrier: string; active: boolean; hasAccount?: boolean }[] }>(canManage ? '/api/hermes/operators' : null);
   const [form, setForm] = useState({ operatorId: '', operatorRef: '', carrier: '', trackingNumber: '', trackingUrl: '', type: 'ausente', description: '', reason: '' });
   const [text, setText] = useState('');
   const [simText, setSimText] = useState('');
@@ -82,6 +82,9 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
   const lastButtons = [...messages].reverse().find((m) => m.direction === 'out' && m.buttons.length)?.buttons ?? [];
   const is = (...s: string[]) => s.includes(o.status);
   const activeOperators = (operators.data?.operators ?? []).filter((op) => op.active || op.id === o.operatorId);
+  // Con la cuenta del operador conectada, el número de su orden es lo que permite pedirle el PDF de la guía.
+  const chosenOperator = activeOperators.find((op) => op.id === (form.operatorId || o.operatorId));
+  const wantsRef = Boolean(chosenOperator?.hasAccount);
 
   return (
     <Modal title={`Pedido ${o.code}`} onClose={onClose} wide>
@@ -202,7 +205,12 @@ export function OrderDetailModal({ orderId, onClose, onChanged }: { orderId: str
                             </select>
                           </Field>
                         </div>
-                        <div className="grow"><Field label="Número del pedido en el operador (opcional)"><input maxLength={120} value={form.operatorRef} onChange={(e) => setForm({ ...form, operatorRef: e.target.value })} /></Field></div>
+                        <div className="grow">
+                          <Field label={wantsRef ? `Número de la orden en ${chosenOperator!.name}` : 'Número del pedido en el operador (opcional)'} hint={wantsRef ? 'Con este número el mensaje lleva el enlace al PDF de la guía. Si lo dejas vacío, la guía sale sin enlace.' : undefined}>
+                            <input maxLength={120} inputMode={wantsRef ? 'numeric' : undefined} value={form.operatorRef} onChange={(e) => setForm({ ...form, operatorRef: e.target.value })} />
+                          </Field>
+                          {wantsRef && !form.operatorRef.trim() && <span className="xs" style={{ color: 'var(--color-warn)' }}>Sin el número de la orden, el cliente no recibe el PDF.</span>}
+                        </div>
                       </div>
                     )}
                     <div className="row">
