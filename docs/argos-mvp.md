@@ -201,7 +201,7 @@ Pendiente: conversaciones de números sin pedido (llegarán con el canal real) y
 ## Hermes · importación en lote y clientes bloqueados
 
 - **Importar en lote** (Pedidos → «Importar en lote», admin y supervisor): se pegan filas desde Excel/Sheets o se sube un CSV (hasta 300 filas). Si va la fila de títulos, el orden de columnas no importa. Primero hay una vista previa (`POST /api/hermes/import/preview`) que no crea nada y marca cada fila como lista, lista con avisos o no creable; luego `POST /api/hermes/import` crea solo las válidas y devuelve las omitidas con su motivo. Cada fila pasa por las mismas reglas que un pedido manual (teléfono, dirección completa, cliente bloqueado). Un teléfono repetido en el archivo o con pedido abierto es aviso, no bloqueo.
-- **Clientes bloqueados** (`hermes_blocked`, por empresa y teléfono): se bloquea desde su pantalla o desde el chat, con motivo obligatorio. Hermes rechaza crearles pedidos (409 `cliente_bloqueado`) a mano, por importación y desde la extensión; el validador lo avisa mientras se escribe. Los pedidos en curso no cambian. Bloquear, desbloquear e importar quedan en auditoría.
+- **Clientes bloqueados** (`hermes_blocked`, por empresa y teléfono): se bloquea desde su pantalla o desde el chat, con motivo obligatorio. Hermes rechaza crearles pedidos (409 `cliente_bloqueado`) a mano, por importación y desde las extensiones anteriores a la 0.7.3 que sigan instaladas (desde la versión 0.7.3 la extensión ya no tiene «Nuevo pedido»: los pedidos se crean solo en la plataforma web, en Hermes → Pedidos, y la extensión queda para Argos); el validador lo avisa mientras se escribe. Los pedidos en curso no cambian. Bloquear, desbloquear e importar quedan en auditoría.
 
 ## Hermes · qué ve la vendedora y correcciones
 

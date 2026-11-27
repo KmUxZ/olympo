@@ -344,15 +344,6 @@ const actions = {
   async incident({ incidentType, description }) {
     await api('POST', '/api/argos/incidents', { type: incidentType, description });
   },
-  /** Crea un pedido en Hermes (logística) a nombre de la persona que tiene la sesión. */
-  async createOrder({ order }) {
-    const res = await api('POST', '/api/hermes/orders', order);
-    return { code: res.code, possibleDuplicateOf: res.possibleDuplicateOf ?? null };
-  },
-  /** Revisa los datos de entrega (dirección, ciudad, teléfono e historial del cliente) antes de crear el pedido. */
-  async validateOrder({ data }) {
-    return api('POST', '/api/hermes/validate', data);
-  },
   async syncNow() {
     await markPresence();
     await sync(false);
@@ -391,6 +382,8 @@ chrome.permissions.onRemoved.addListener(() => applyTracking());
 
 async function boot() {
   ensureAlarm();
+  // Limpieza: las versiones anteriores a la 0.7.3 guardaban aquí un borrador con datos de clientes; ya no se usa.
+  store.remove('orderDraft').catch(() => {});
   const { auth } = await store.get('auth');
   if (auth?.token) await refreshState().catch(() => updateBadge());
   else await updateBadge();
