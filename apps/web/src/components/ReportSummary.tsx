@@ -1,9 +1,9 @@
-// Argos · tablas de reporte para el dashboard: % conectada y reparto del tiempo por persona y por día.
+// Argos · tablas de reporte para el dashboard: % con actividad y reparto del tiempo por persona y por día.
 // Usa el mismo reporte de la página «Reportes», con periodos rápidos en lugar de fechas a mano.
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../lib/api';
-import { connectedPct, dayEndIso, dayStartIso, fmtMinutes, isoDay, pctTone } from '../lib/format';
+import { dayEndIso, dayStartIso, fmtMinutes, isoDay } from '../lib/format';
 import { Badge, Empty, ErrorNote, Loading } from './ui';
 import { Composition } from './charts';
 
@@ -22,6 +22,8 @@ const daysAgo = (n: number) => isoDay(new Date(Date.now() - n * 86_400_000));
 
 const classified = (r: Totals) => r.observedMinutes + r.noActivityMinutes + r.breakMinutes + r.noDataMinutes;
 const share = (part: number, r: Totals) => (classified(r) > 0 ? Math.round((part / classified(r)) * 100) : null);
+/** Color del % con actividad: verde desde 70 %, amarillo desde 50 %, rojo por debajo. */
+const activeTone = (n: number) => (n >= 70 ? 'ok' : n >= 50 ? 'warn' : 'danger');
 const pct = (n: number | null) => (n === null ? '—' : `${n} %`);
 const parts = (r: Totals) => [
   { key: 'observada', value: r.observedMinutes },
@@ -42,22 +44,21 @@ export function ReportSummary() {
   const path = useMemo(() => `/api/argos/reports?${new URLSearchParams({ from: dayStartIso(from), to: dayEndIso(to) })}`, [from, to]);
   const report = useApi<Report>(path, 120_000);
   const data = report.data;
-  // Por persona: primero quien menos tiempo estuvo conectada, que es a quien hay que mirar.
-  const users = useMemo(() => [...(data?.byUser ?? [])].sort((a, b) => (connectedPct(classified(a), a.noDataMinutes) ?? 101) - (connectedPct(classified(b), b.noDataMinutes) ?? 101)), [data]);
+  // Por persona: primero quien menos actividad tuvo, que es a quien hay que mirar.
+  const users = useMemo(() => [...(data?.byUser ?? [])].sort((a, b) => (share(a.observedMinutes, a) ?? 101) - (share(b.observedMinutes, b) ?? 101)), [data]);
   const days = useMemo(() => [...(data?.byDay ?? [])].reverse(), [data]);
   const rows: (UserRow | DayRow)[] = tab === 'persona' ? users : days;
   const all = sum(rows);
 
   const line = (r: Totals, first: React.ReactNode, key: string, strong = false) => {
-    const connected = connectedPct(classified(r), r.noDataMinutes);
+    const active = share(r.observedMinutes, r);
     const cell = (content: React.ReactNode) => (strong ? <strong>{content}</strong> : content);
     return (
       <tr key={key}>
         <td>{first}</td>
         <td>{cell(r.shifts)}</td>
         <td className="nowrap">{cell(fmtMinutes(r.durationMinutes))}</td>
-        <td>{connected === null ? '—' : <Badge tone={pctTone(connected)}>{connected} %</Badge>}</td>
-        <td>{cell(pct(share(r.observedMinutes, r)))}</td>
+        <td>{active === null ? '—' : <Badge tone={activeTone(active)}>{active} %</Badge>}</td>
         <td>{cell(pct(share(r.noActivityMinutes, r)))}</td>
         <td>{cell(pct(share(r.breakMinutes, r)))}</td>
         <td>{cell(pct(share(r.noDataMinutes, r)))}</td>
@@ -89,7 +90,6 @@ export function ReportSummary() {
             <thead>
               <tr>
                 <th>{tab === 'persona' ? 'Persona' : 'Día'}</th><th>Turnos</th><th>En turno</th>
-                <th title="Parte del tiempo en turno con señal de la extensión">% conectada</th>
                 <th title="Tiempo con actividad observada en las herramientas de trabajo">% con actividad</th>
                 <th title="Conectada, pero sin actividad observada">% sin actividad</th>
                 <th>% en pausa</th>
