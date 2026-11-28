@@ -244,10 +244,10 @@ export function normalizePhone(raw: string): string {
   return digits.length === 10 && digits.startsWith('3') ? `57${digits}` : digits; // celular colombiano sin indicativo
 }
 
-export async function settingsOf(companyId: string): Promise<{ driver: string; reminderMinutes: number[]; escalateMinutes: number; botName: string; noReplyAction: 'persona' | 'confirmar' }> {
-  const { rows } = await db.query(`SELECT driver, reminder_minutes, escalate_minutes, bot_name, no_reply_action FROM hermes_settings WHERE company_id = $1`, [companyId]);
+export async function settingsOf(companyId: string): Promise<{ driver: string; reminderMinutes: number[]; escalateMinutes: number; botName: string; noReplyAction: 'persona' | 'confirmar'; confirmationMode: 'obligatoria' | 'informativa' | 'ninguna' }> {
+  const { rows } = await db.query(`SELECT driver, reminder_minutes, escalate_minutes, bot_name, no_reply_action, confirmation_mode FROM hermes_settings WHERE company_id = $1`, [companyId]);
   const r = rows[0];
-  return { driver: r?.driver ?? 'simulado', reminderMinutes: r?.reminder_minutes ?? [30, 180], escalateMinutes: r?.escalate_minutes ?? 360, botName: r?.bot_name ?? '', noReplyAction: r?.no_reply_action === 'confirmar' ? 'confirmar' : 'persona' };
+  return { driver: r?.driver ?? 'simulado', reminderMinutes: r?.reminder_minutes ?? [30, 180], escalateMinutes: r?.escalate_minutes ?? 360, botName: r?.bot_name ?? '', noReplyAction: r?.no_reply_action === 'confirmar' ? 'confirmar' : 'persona', confirmationMode: r?.confirmation_mode === 'informativa' || r?.confirmation_mode === 'ninguna' ? r.confirmation_mode : 'obligatoria' };
 }
 
 export async function getOrder(companyId: string, id: string): Promise<Order | null> {
@@ -424,6 +424,17 @@ async function agentName(companyId: string): Promise<string> {
 
 // ───────── Acciones sobre un pedido ─────────
 export async function startConfirmation(o: Order): Promise<void> {
+  const { confirmationMode } = await settingsOf(o.company_id);
+  if (confirmationMode !== 'obligatoria') {
+    // El pedido no depende de la respuesta del cliente: nace confirmado y listo para su guía.
+    const informs = confirmationMode === 'informativa';
+    await patch(o, { status: 'confirmado', awaiting: informs ? 'confirmacion' : null, confirmed_at: new Date().toISOString() });
+    await logEvent(o, 'confirmado', informs ? 'Confirmado al crearlo: se le informa al cliente, sin esperar su respuesta' : 'Confirmado al crearlo: no se pide confirmación al cliente');
+    if (!informs) return;
+    await send(o, MESSAGES.confirmacion(o, await companyName(o.company_id), await agentName(o.company_id)));
+    await logEvent(o, 'confirmacion_enviada', 'Se le enviaron los datos del pedido al cliente');
+    return;
+  }
   await patch(o, { awaiting: 'confirmacion' });
   await send(o, MESSAGES.confirmacion(o, await companyName(o.company_id), await agentName(o.company_id)));
   await logEvent(o, 'confirmacion_enviada', 'Se pidió confirmación al cliente');
@@ -563,7 +574,18 @@ export async function handleInbound(
   let intent = input.payload ?? '';
   if (!intent && (o.awaiting === 'confirmacion')) intent = YES.test(typed) ? 'CONFIRMAR' : NO.test(typed) ? 'CANCELAR' : '';
 
-  if (o.awaiting === 'confirmacion' && o.status === 'por_confirmar') {
+  if (o.awaiting === 'confirmacion' && o.status === 'confirmado') {
+    // Pedido que nació confirmado: el cliente aún puede responder al mensaje de datos mientras no tenga guía.
+    if (intent === 'CONFIRMAR') {
+      await patch(o, { awaiting: null });
+      await logEvent(o, 'confirmado', 'El cliente confirmó por WhatsApp', 'Cliente');
+      await send(o, MESSAGES.confirmado(o));
+    } else if (intent === 'CANCELAR') await cancel(o, 'Cancelado por el cliente');
+    else if (intent === 'CORREGIR') {
+      await patch(o, { awaiting: 'direccion' });
+      await send(o, MESSAGES.pedir_direccion());
+    } else await toHuman(o, 'El cliente respondió algo que el bot no entiende');
+  } else if (o.awaiting === 'confirmacion' && o.status === 'por_confirmar') {
     if (intent === 'CONFIRMAR') await confirm(o);
     else if (intent === 'CANCELAR') await cancel(o, 'Cancelado por el cliente');
     else if (intent === 'CORREGIR') {
@@ -622,8 +644,12 @@ export async function handleInbound(
     await send(o, MESSAGES.novedad_recibida());
   } else if (o.status === 'confirmado' && (intent === 'CONFIRMAR' || (!intent && YES.test(typed)))) {
     // Respondió tarde a un pedido que ya se había confirmado (a mano o por falta de respuesta).
-    await logEvent(o, 'confirmado', 'El cliente confirmó por WhatsApp un pedido que ya estaba confirmado', 'Cliente');
-    await send(o, MESSAGES.confirmado(o));
+    // Si ya se le agradeció la confirmación, un «listo» o «gracias» posterior no se contesta otra vez.
+    const thanked = await db.query(`SELECT 1 FROM hermes_events WHERE order_id = $1 AND type = 'confirmado' AND actor = 'Cliente' LIMIT 1`, [o.id]);
+    if (!thanked.rows.length) {
+      await logEvent(o, 'confirmado', 'El cliente confirmó por WhatsApp un pedido que ya estaba confirmado', 'Cliente');
+      await send(o, MESSAGES.confirmado(o));
+    }
   } else if (o.status === 'confirmado' && (intent === 'CANCELAR' || intent === 'CORREGIR')) {
     // El pedido ya pudo salir hacia el operador: lo decide una persona, que puede ver si ya tiene guía.
     await toHuman(o, intent === 'CANCELAR' ? 'El cliente pide cancelar un pedido ya confirmado: revisar si ya tiene guía antes de cancelarlo' : 'El cliente quiere corregir los datos de un pedido ya confirmado: revisar si ya tiene guía');

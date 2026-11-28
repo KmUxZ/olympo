@@ -657,12 +657,12 @@ export function hermesRoutes(app: FastifyInstance): void {
   app.get('/api/hermes/settings', guard('admin', 'supervisor'), async (req) => ({ settings: await bot.settingsOf(req.ctx.companyId) }));
 
   app.put('/api/hermes/settings', guard('admin'), async (req) => {
-    const b = parse(z.object({ reminderMinutes: z.array(z.number().int().min(5).max(2880)).max(4), escalateMinutes: z.number().int().min(15).max(4320), noReplyAction: z.enum(['persona', 'confirmar']).default('persona'), botName: z.string().trim().max(30).regex(/^[\p{L} .'-]*$/u, 'el nombre solo puede llevar letras').default('') }), req.body);
+    const b = parse(z.object({ reminderMinutes: z.array(z.number().int().min(5).max(2880)).max(4), escalateMinutes: z.number().int().min(15).max(4320), noReplyAction: z.enum(['persona', 'confirmar']).default('persona'), confirmationMode: z.enum(['obligatoria', 'informativa', 'ninguna']).optional(), botName: z.string().trim().max(30).regex(/^[\p{L} .'-]*$/u, 'el nombre solo puede llevar letras').default('') }), req.body);
     const before = await bot.settingsOf(req.ctx.companyId);
     await db.query(
-      `INSERT INTO hermes_settings (company_id, reminder_minutes, escalate_minutes, bot_name, no_reply_action) VALUES ($1, $2::jsonb, $3, $4, $5)
-       ON CONFLICT (company_id) DO UPDATE SET reminder_minutes = EXCLUDED.reminder_minutes, escalate_minutes = EXCLUDED.escalate_minutes, bot_name = EXCLUDED.bot_name, no_reply_action = EXCLUDED.no_reply_action`,
-      [req.ctx.companyId, JSON.stringify(b.reminderMinutes), b.escalateMinutes, b.botName, b.noReplyAction],
+      `INSERT INTO hermes_settings (company_id, reminder_minutes, escalate_minutes, bot_name, no_reply_action, confirmation_mode) VALUES ($1, $2::jsonb, $3, $4, $5, $6)
+       ON CONFLICT (company_id) DO UPDATE SET reminder_minutes = EXCLUDED.reminder_minutes, escalate_minutes = EXCLUDED.escalate_minutes, bot_name = EXCLUDED.bot_name, no_reply_action = EXCLUDED.no_reply_action, confirmation_mode = EXCLUDED.confirmation_mode`,
+      [req.ctx.companyId, JSON.stringify(b.reminderMinutes), b.escalateMinutes, b.botName, b.noReplyAction, b.confirmationMode ?? before.confirmationMode],
     );
     await auditBy(req.ctx, { action: 'hermes.ajustes', entityType: 'empresa', entityId: req.ctx.companyId, summary: 'Cambió los ajustes de Hermes', metadata: { antes: before, despues: b } });
     return { ok: true };

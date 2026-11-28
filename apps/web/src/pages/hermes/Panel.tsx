@@ -136,10 +136,11 @@ function AdminChannel() {
 function SettingsCard() {
   const { me } = useAuth();
   const isAdmin = me?.user.role === 'admin';
-  const settings = useApi<{ settings: { driver: string; reminderMinutes: number[]; escalateMinutes: number; botName: string; noReplyAction: string } }>('/api/hermes/settings');
+  const settings = useApi<{ settings: { driver: string; reminderMinutes: number[]; escalateMinutes: number; botName: string; noReplyAction: string; confirmationMode: string } }>('/api/hermes/settings');
   const [reminders, setReminders] = useState('');
   const [botName, setBotName] = useState('');
   const [noReply, setNoReply] = useState('persona');
+  const [mode, setMode] = useState('obligatoria');
   const [escalate, setEscalate] = useState(360);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -149,6 +150,7 @@ function SettingsCard() {
       setEscalate(settings.data.settings.escalateMinutes);
       setBotName(settings.data.settings.botName);
       setNoReply(settings.data.settings.noReplyAction);
+      setMode(settings.data.settings.confirmationMode);
     }
   }, [settings.data]);
 
@@ -159,7 +161,7 @@ function SettingsCard() {
     try {
       const list = reminders.split(/[\s,]+/).filter(Boolean).map(Number);
       if (list.some((n) => !Number.isFinite(n))) throw new Error('Los recordatorios deben ser números de minutos separados por comas.');
-      await api('PUT', '/api/hermes/settings', { reminderMinutes: list, escalateMinutes: escalate, botName: botName.trim(), noReplyAction: noReply });
+      await api('PUT', '/api/hermes/settings', { reminderMinutes: list, escalateMinutes: escalate, botName: botName.trim(), noReplyAction: noReply, confirmationMode: mode });
       setSaved(true);
     } catch (err) {
       setError((err as Error).message);
@@ -183,6 +185,16 @@ function SettingsCard() {
         {saved && <div className="alert ok" role="status">Ajustes guardados.</div>}
         <Field label="Nombre con el que el bot se presenta" hint="Es quien firma el primer mensaje: «Soy Valentina de tu tienda». Si lo dejas vacío, se presenta como Hermes.">
           <input maxLength={30} value={botName} disabled={!isAdmin} onChange={(e) => setBotName(e.target.value)} placeholder="Ej.: Valentina" style={{ maxWidth: 320 }} />
+        </Field>
+        <Field
+          label="Confirmación del pedido"
+          hint={mode === 'obligatoria' ? 'El pedido espera a que el cliente confirme antes de seguir.' : mode === 'informativa' ? 'El pedido queda confirmado al crearlo. Al cliente se le envían los datos y puede corregir o cancelar mientras no tenga guía, pero no tiene que responder.' : 'El pedido queda confirmado al crearlo y al cliente no se le escribe hasta que tenga guía.'}
+        >
+          <select value={mode} disabled={!isAdmin} onChange={(e) => setMode(e.target.value)} style={{ maxWidth: 420 }}>
+            <option value="obligatoria">El cliente debe confirmar</option>
+            <option value="informativa">Enviar los datos, sin exigir respuesta</option>
+            <option value="ninguna">No enviar mensaje de confirmación</option>
+          </select>
         </Field>
         <div className="grid cols-2">
           <Field label="Recordatorios de confirmación (minutos)" hint="Separados por comas. Cada uno cuenta desde el mensaje anterior. Ej.: 30, 180">
