@@ -112,8 +112,13 @@ export async function handleGuideEvent(op: HokoOperator, raw: unknown): Promise<
   };
 
   switch (meaning.step) {
-    case 'espera':
-      return record(`Guía ${number || 'en preparación'} (${meaning.label}): se avisará al cliente cuando salga.`);
+    case 'espera': {
+      // Con la guía ya generada el cliente la recibe de una vez, sin esperar a que la transportadora la recoja.
+      if (!number) return record(`Guía en preparación (${meaning.label}): se avisará al cliente cuando tenga número.`);
+      const was = order.status;
+      await ensureDispatched();
+      return record(was === 'confirmado' ? `Guía ${number} generada: se le envió al cliente.` : `${meaning.label}: sin cambio para el cliente.`);
+    }
     case 'transito': {
       const was = order.status;
       const o = await ensureDispatched();
@@ -161,5 +166,24 @@ export async function handleGuideEvent(op: HokoOperator, raw: unknown): Promise<
       await bot.setAttention(o, `${op.name}: ${meaning.note ?? meaning.label}`);
       return record(`${meaning.label}: se marcó para que una persona lo revise.`);
     }
+  }
+}
+
+/**
+ * Pedidos ya enlazados a una orden del operador cuya guía se conoce pero que siguen sin despachar
+ * (el aviso llegó cuando la guía todavía no se enviaba al generarse, o el envío falló). Se ponen al día.
+ */
+export async function dispatchLinkedGuides(): Promise<void> {
+  const { rows } = await db.query<{ id: string; company_id: string; guide: string; carrier: string; name: string }>(
+    `SELECT o.id, o.company_id, op.carrier, op.name,
+            (SELECT e.guide_number FROM hermes_operator_events e WHERE e.operator_id = o.operator_id AND e.external_ref = o.operator_ref AND e.guide_number <> '' ORDER BY e.at DESC LIMIT 1) AS guide
+       FROM hermes_orders o JOIN hermes_operators op ON op.id = o.operator_id
+      WHERE o.status = 'confirmado' AND o.operator_ref <> '' AND o.tracking_number = '' AND o.operator_state IN ('1', '5', '13')
+      ORDER BY o.updated_at LIMIT 50`,
+  );
+  for (const r of rows) {
+    if (!r.guide) continue;
+    const o = await bot.getOrder(r.company_id, r.id);
+    if (o && o.status === 'confirmado') await bot.dispatch(o, { carrier: r.carrier || r.name, trackingNumber: r.guide, trackingUrl: '' }, r.name);
   }
 }
