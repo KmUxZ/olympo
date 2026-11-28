@@ -5,6 +5,7 @@ import { useApi, useNow } from '../lib/api';
 import { connectedPct, pctTone, ago, BREAK_LABEL, fmtLongDay, fmtSeconds, fmtMinutes, fmtTime, INCIDENT_LABEL, INCIDENT_STATUS, LIVE_STATE, scheduleText } from '../lib/format';
 import { Badge, Empty, ErrorNote, Freshness, Loading, StatePill } from '../components/ui';
 import { ShiftDetailModal } from '../components/ShiftDetail';
+import { ReportSummary } from '../components/ReportSummary';
 import { Composition, Donut, HourBars, STATE_ORDER, TeamTimeline } from '../components/charts';
 
 const LIVE_KEYS = ['actividad_observada', 'sin_actividad_observada', 'en_pausa', 'sin_senal', 'fuera_de_turno'] as const;
@@ -183,6 +184,8 @@ export function Dashboard() {
       </div>
 
       <HourlyCharts hourly={data.hourly} now={new Date(now)} />
+
+      <ReportSummary />
 
       <div className="grid cols-2">
         <div className="card">
