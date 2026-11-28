@@ -13,6 +13,7 @@
   "scripts": {
     "dev": "concurrently -n api,web -c auto \"npm run dev -w @olympo/server\" \"npm run dev -w @olympo/web\"",
     "seed": "npm run seed -w @olympo/server --",
+    "test": "node tests/run.mjs",
     "build": "npm run build -w @olympo/web",
     "start": "npm run start -w @olympo/server",
     "typecheck": "npm run typecheck -w @olympo/server && npm run typecheck -w @olympo/web"

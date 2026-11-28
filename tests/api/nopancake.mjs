@@ -1,0 +1,15 @@
+import { readFileSync } from 'node:fs';
+const BASE = 'http://127.0.0.1:4100';
+const pass = /cuentas\): (\S+)/.exec(readFileSync(process.argv[2], 'utf8'))[1];
+let f = 0; const check = (n, c, x = '') => { console.log(`${c ? 'OK  ' : 'FAIL'} ${n} ${c ? '' : JSON.stringify(x).slice(0, 400)}`); if (!c) f++; };
+const call = async (m, p, c, b) => { const r = await fetch(BASE + p, { method: m, headers: { ...(m !== 'GET' ? { 'content-type': 'application/json' } : {}), ...(c ? { cookie: c } : {}) }, body: m !== 'GET' ? JSON.stringify(b ?? {}) : undefined }); return { status: r.status, json: await r.json().catch(() => ({})), cookie: r.headers.get('set-cookie')?.split(';')[0] }; };
+const adm = (await call('POST', '/api/auth/login', null, { email: 'admin@demo.olympo.test', password: pass })).cookie;
+let r = await call('GET', '/api/argos/dashboard', adm);
+check('dashboard responde sin datos de canal', r.status === 200 && !('channel' in r.json) && r.json.sellers.length === 3 && r.json.sellers.every((s) => !('channel' in s)) && r.json.hourly.length === 24 && !('inbox' in r.json.hourly[0]), [r.status, Object.keys(r.json)]);
+const day = new Date().toISOString().slice(0, 10);
+r = await call('GET', `/api/argos/reports?from=${day}T00:00:00.000Z&to=${day}T23:59:59.000Z`, adm);
+check('reportes responden sin datos de canal', r.status === 200 && Array.isArray(r.json.byUser) && !('hasChannelData' in r.json), r);
+check('las rutas de Pancake ya no existen', (await call('GET', '/api/argos/pancake/connections', adm)).status === 404 && (await call('GET', '/api/argos/pancake', adm)).status === 404);
+r = await call('GET', '/api/platform/companies', adm);
+check('plataforma lista empresas sin columnas de conexión', r.status === 200 ? !('connectedLines' in (r.json.companies?.[0] ?? {})) : r.status === 403, r);
+console.log(f ? `\n${f} FALLOS` : '\nTODO OK'); process.exit(f ? 1 : 0);

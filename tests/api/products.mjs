@@ -1,0 +1,24 @@
+import { readFileSync } from 'node:fs';
+const BASE = 'http://127.0.0.1:4100';
+const pass = /cuentas\): (\S+)/.exec(readFileSync(process.argv[2], 'utf8'))[1];
+let f = 0; const check = (n, c, x = '') => { console.log(`${c ? 'OK  ' : 'FAIL'} ${n} ${c ? '' : JSON.stringify(x).slice(0, 300)}`); if (!c) f++; };
+const call = async (m, p, c, b) => { const r = await fetch(BASE + p, { method: m, headers: { ...(m !== 'GET' ? { 'content-type': 'application/json' } : {}), ...(c ? { cookie: c } : {}) }, body: m !== 'GET' ? JSON.stringify(b ?? {}) : undefined }); return { status: r.status, json: await r.json().catch(() => ({})), cookie: r.headers.get('set-cookie')?.split(';')[0] }; };
+const plat = (await call('POST', '/api/auth/login', null, { email: 'admin@demo.olympo.test', password: pass })).cookie;
+// La empresa que opera la plataforma tiene todos los productos activos.
+const products0 = (await call('GET', '/api/auth/me', plat)).json.company.products;
+check('la empresa que opera la plataforma tiene todos los productos', ['argos', 'hermes', 'zeus', 'athena'].every((x) => products0.includes(x)));
+const c = await call('POST', '/api/platform/companies', plat, { name: 'Solo Logística', timezone: 'America/Bogota', adminName: 'Admin H', adminEmail: 'admin@sololog.test', products: ['hermes'] });
+check('crear empresa solo con Hermes', c.status === 200, c.json);
+check('sin productos se rechaza', (await call('POST', '/api/platform/companies', plat, { name: 'Nada', timezone: 'America/Bogota', adminName: 'A B', adminEmail: 'a@nada.test', products: [] })).status === 400);
+let h = (await call('POST', '/api/auth/login', null, { email: 'admin@sololog.test', password: c.json.tempPassword })).cookie;
+await call('POST', '/api/auth/change-password', h, { current: c.json.tempPassword, next: 'clave-logistica-123' });
+check('ve sus productos', (await call('GET', '/api/auth/me', h)).json.company.products.join() === 'hermes');
+check('puede usar Hermes', (await call('GET', '/api/hermes/orders', h)).status === 200);
+const blocked = await call('GET', '/api/argos/dashboard', h);
+check('Argos bloqueado en el servidor', blocked.status === 403 && blocked.json.error.code === 'producto_no_contratado', blocked.json);
+check('cuenta (usuarios) sigue disponible', (await call('GET', '/api/users', h)).status === 200);
+check('activar Argos desde plataforma', (await call('PATCH', `/api/platform/companies/${c.json.id}`, plat, { products: ['hermes', 'argos'] })).status === 200);
+check('ahora Argos responde', (await call('GET', '/api/argos/dashboard', h)).status === 200);
+const audit = (await call('GET', '/api/audit', h)).json.entries.map((e) => e.action);
+check('el cambio queda en la auditoría del cliente', audit.includes('plataforma.productos'), audit);
+console.log(f ? `\n${f} FALLOS` : '\nTODO OK'); process.exit(f ? 1 : 0);

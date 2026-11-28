@@ -1,0 +1,40 @@
+const { checkAddress, checkContact, composeAddress, findCity, summarizeHistory } = await import('../../apps/server/src/hermes/address.ts');
+let f = 0;
+const check = (n: string, c: boolean, x: unknown = '') => { console.log(`${c ? 'OK  ' : 'FAIL'} ${n} ${c ? '' : JSON.stringify(x).slice(0, 400)}`); if (!c) f++; };
+const codes = (r: { issues: { code: string }[] }) => r.issues.map((i) => i.code).sort().join();
+
+let r = checkAddress('Calle 10 # 5-20 barrio Centro', 'Cali');
+check('completa: calle con placa y barrio', r.level === 'completa' && r.issues.length === 0 && r.city?.department === 'Valle del Cauca', r);
+r = checkAddress('cra 80 12 34 apto 501 barrio laureles', 'medellin');
+check('abreviada y sin #: se entiende y se normaliza', r.level === 'completa' && r.normalizedAddress.startsWith('Carrera 80 # 12-34'), r);
+r = checkAddress('Cl 45A No 23B - 10 Barrio La Soledad', 'Bogotá D.C.');
+check('con letras y "No"', r.level === 'completa' && r.normalizedAddress.startsWith('Calle 45A # 23B-10') && r.city?.name === 'Bogotá', r);
+r = checkAddress('Calle 10 # 5-20', 'Cali');
+check('sin barrio → incompleta (bloquea)', r.level === 'incompleta' && codes(r) === 'sin_barrio' && r.issues[0].severity === 'error' && r.missing.join() === 'el barrio', r);
+r = checkAddress('Calle 10 barrio Centro', 'Cali');
+check('sin placa → incompleta', r.level === 'incompleta' && codes(r).includes('sin_placa'), r);
+r = checkAddress('al lado de la tienda de don Pedro', 'Cali');
+check('sin vía → incompleta', r.level === 'incompleta' && codes(r).includes('sin_via'), r);
+r = checkAddress('Carrera 7 # 45-12 Edificio Torres del Parque barrio Centro', 'Bogota');
+check('edificio sin apartamento → incompleta', codes(r) === 'sin_unidad' && r.level === 'incompleta', r);
+r = checkAddress('Manzana 5 casa 12 barrio Villa del Sur', 'Neiva');
+check('manzana y casa es válida', r.level === 'completa', r);
+r = checkAddress('Vereda El Carmen, finca La Esperanza', 'Rionegro');
+check('zona rural se avisa sin bloquear', r.rural && r.level === 'revisar' && codes(r) === 'rural' && r.issues[0].severity === 'aviso', r);
+r = checkAddress('Calle 10 # 5-20 barrio Centro', 'Villa Inventada');
+check('ciudad no reconocida → aviso sin bloquear', r.level === 'revisar' && codes(r) === 'ciudad_desconocida' && r.issues[0].severity === 'aviso', r);
+check('ciudad con departamento pegado', findCity('Cali, Valle')?.name === 'Cali' && findCity('CARTAGENA DE INDIAS')?.name === 'Cartagena');
+check('Diagonal y Transversal', checkAddress('Dg 40 sur # 12-08 barrio Kennedy', 'Bogotá').level === 'completa' && checkAddress('Transversal 5 # 30 15 barrio X', 'Cali').level === 'completa');
+
+check('barrio en campo aparte se une a la dirección', composeAddress('Calle 10 # 5-20', 'Centro') === 'Calle 10 # 5-20, barrio Centro' && composeAddress('Calle 10 # 5-20 barrio Centro', 'centro') === 'Calle 10 # 5-20 barrio Centro' && checkAddress(composeAddress('Calle 10 # 5-20', 'Barrio Centro'), 'Cali').level === 'completa');
+check('celular válido sin avisos', checkContact('573001234567', 'Laura Gómez').length === 0);
+check('teléfono corto es error', checkContact('30012345', 'Laura Gómez')[0]?.severity === 'error');
+check('fijo o extranjero es aviso', checkContact('5716012345678', 'Laura Gómez')[0]?.code === 'telefono_no_celular');
+check('solo nombre → aviso', checkContact('573001234567', 'Laura')[0]?.code === 'nombre_incompleto');
+
+check('riesgo alto: devolvió y nunca recibió', summarizeHistory({ delivered: 0, returned: 2, cancelled: 0, refused: 0, open: 0 }).risk === 'alto');
+check('riesgo medio: historial mixto', summarizeHistory({ delivered: 3, returned: 1, cancelled: 0, refused: 0, open: 0 }).risk === 'medio');
+check('bueno: solo entregas', summarizeHistory({ delivered: 2, returned: 0, cancelled: 0, refused: 0, open: 0 }).risk === 'bueno');
+check('nuevo', summarizeHistory({ delivered: 0, returned: 0, cancelled: 0, refused: 0, open: 0 }).risk === 'nuevo');
+console.log(f ? `\n${f} FALLOS` : '\nTODO OK');
+process.exit(f ? 1 : 0);
