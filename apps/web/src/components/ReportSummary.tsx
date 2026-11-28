@@ -18,7 +18,7 @@ const PERIODS = [
   { key: '7', label: '7 días', from: 6, to: 0 },
   { key: '30', label: '30 días', from: 29, to: 0 },
 ] as const;
-type PeriodKey = (typeof PERIODS)[number]['key'];
+const daysAgo = (n: number) => isoDay(new Date(Date.now() - n * 86_400_000));
 
 const classified = (r: Totals) => r.observedMinutes + r.noActivityMinutes + r.breakMinutes + r.noDataMinutes;
 const share = (part: number, r: Totals) => (classified(r) > 0 ? Math.round((part / classified(r)) * 100) : null);
@@ -34,14 +34,12 @@ const sum = (rows: Totals[]): Totals => Object.fromEntries(KEYS.map((k) => [k, r
 const dayLabel = (day: string) => new Date(`${day}T12:00:00`).toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' });
 
 export function ReportSummary() {
-  const [period, setPeriod] = useState<PeriodKey>('7');
+  const [from, setFrom] = useState(daysAgo(6));
+  const [to, setTo] = useState(daysAgo(0));
+  // El atajo queda marcado solo mientras las fechas coincidan con él.
+  const period = PERIODS.find((p) => daysAgo(p.from) === from && daysAgo(p.to) === to)?.key ?? '';
   const [tab, setTab] = useState<'persona' | 'dia'>('persona');
-  const path = useMemo(() => {
-    const p = PERIODS.find((x) => x.key === period)!;
-    const from = isoDay(new Date(Date.now() - p.from * 86_400_000));
-    const to = isoDay(new Date(Date.now() - p.to * 86_400_000));
-    return `/api/argos/reports?${new URLSearchParams({ from: dayStartIso(from), to: dayEndIso(to) })}`;
-  }, [period]);
+  const path = useMemo(() => `/api/argos/reports?${new URLSearchParams({ from: dayStartIso(from), to: dayEndIso(to) })}`, [from, to]);
   const report = useApi<Report>(path, 120_000);
   const data = report.data;
   // Por persona: primero quien menos tiempo estuvo conectada, que es a quien hay que mirar.
@@ -74,7 +72,9 @@ export function ReportSummary() {
       <div className="card-head" style={{ flexWrap: 'wrap', gap: 8 }}>
         <h2>Reporte de conexión</h2>
         <div className="row" role="group" aria-label="Periodo" style={{ flexWrap: 'wrap' }}>
-          {PERIODS.map((p) => <button key={p.key} className={`btn sm ${period === p.key ? 'primary' : ''}`} aria-pressed={period === p.key} onClick={() => setPeriod(p.key)}>{p.label}</button>)}
+          {PERIODS.map((p) => <button key={p.key} className={`btn sm ${period === p.key ? 'primary' : ''}`} aria-pressed={period === p.key} onClick={() => { setFrom(daysAgo(p.from)); setTo(daysAgo(p.to)); }}>{p.label}</button>)}
+          <label className="row small" style={{ gap: 6 }}>Desde <input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} style={{ width: 150 }} /></label>
+          <label className="row small" style={{ gap: 6 }}>Hasta <input type="date" value={to} min={from} max={daysAgo(0)} onChange={(e) => e.target.value && setTo(e.target.value)} style={{ width: 150 }} /></label>
           <Link to="/reportes" className="small">Ver reporte completo</Link>
         </div>
       </div>
@@ -106,7 +106,7 @@ export function ReportSummary() {
           </table>
         </div>
       ) : (
-        <Empty>{period === 'hoy' ? 'Aún no hay turnos cerrados hoy. Los turnos en curso se suman al cerrarse.' : 'No hay turnos en este periodo.'}</Empty>
+        <Empty>{from === daysAgo(0) ? 'Aún no hay turnos cerrados hoy. Los turnos en curso se suman al cerrarse.' : 'No hay turnos en este periodo.'}</Empty>
       )}
       <div className="card-pad small muted" style={{ borderTop: '1px solid var(--color-border)' }}>
         {all.openShifts > 0 && <><strong>{all.openShifts} turno(s) siguen en curso</strong> y aún no suman: se incluyen al cerrarse. </>}
