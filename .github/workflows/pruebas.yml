@@ -1,0 +1,37 @@
+# Corre la batería de pruebas con cada cambio. Si algo falla, GitHub marca el cambio en rojo y avisa por correo.
+# Las pruebas usan bases temporales y servicios simulados: no necesitan ni reciben ninguna credencial.
+name: Pruebas
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Si llega un cambio nuevo mientras corre el anterior, se cancela el anterior: solo importa el último.
+concurrency:
+  group: pruebas-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      TZ: America/Bogota
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Revisar tipos
+        run: npm run typecheck
+      - name: Compilar la web
+        run: npm run build
+      - name: Correr las pruebas
+        run: npm test

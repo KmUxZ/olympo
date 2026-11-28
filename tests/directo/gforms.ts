@@ -10,8 +10,8 @@ let f = 0; const check = (n: string, c: boolean, x: unknown = '') => { console.l
 const fails = (fn: () => unknown, code: string) => { try { fn(); return false; } catch (e) { return (e as { code?: string }).code === code; } };
 
 // Enlaces
-check('acepta el enlace corto y el largo', g.isFormUrl('https://forms.gle/c8C4PKgGaQTj5FAc7') && g.isFormUrl('https://docs.google.com/forms/d/e/1FAIpQLScbM8TZxlaBmxaH-WuPWkvrhg9LgKpEqWuXJ6GUbvBTMkIm5Q/viewform?usp=send_form'));
-check('rechaza enlaces que no son formularios de Google', !g.isFormUrl('https://evil.example/forms/d/e/1FAIpQLScbM8TZxlaBmxaH-WuPWkvrhg9LgKpEq/viewform') && !g.isFormUrl('http://forms.gle/c8C4PKgGaQTj5FAc7') && !g.isFormUrl('https://docs.google.com/spreadsheets/d/abc') && !g.isFormUrl('no es un enlace'));
+check('acepta el enlace corto y el largo', g.isFormUrl('https://forms.gle/AbCdEfGh12345678') && g.isFormUrl('https://docs.google.com/forms/d/e/1FAIpQLSc-FORMULARIO-DE-EJEMPLO-000000000000000000000000/viewform?usp=send_form'));
+check('rechaza enlaces que no son formularios de Google', !g.isFormUrl('https://evil.example/forms/d/e/1FAIpQLSc-FORMULARIO-DE-EJEMPLO-00000000/viewform') && !g.isFormUrl('http://forms.gle/AbCdEfGh12345678') && !g.isFormUrl('https://docs.google.com/spreadsheets/d/abc') && !g.isFormUrl('no es un enlace'));
 
 // Lectura de los formularios reales
 const pais = g.parseFormHtml('PAIS', readFileSync(dir + 'form-pais.html', 'utf8'));
@@ -22,18 +22,18 @@ const rp = g.mapRoles(pais), ro = g.mapRoles(ofi);
 const need = ['vendedor', 'tipoVenta', 'pagina', 'nombre', 'viaTipo', 'viaNumero', 'numeral', 'placa1', 'guion', 'placa2', 'barrio', 'ciudad', 'celular1', 'celular2', 'valor', 'pedido', 'producto'];
 check('País: reconoce las 17 preguntas, incluidas las dos sin título', need.every((r) => (rp as any)[r]) && Object.keys(rp).length === 17 && rp.placa1!.entry === '820046072' && rp.placa2!.entry === '83375407', Object.keys(rp));
 check('Oficina: reconoce las 10 preguntas', ['vendedor', 'nombre', 'direccionOficina', 'pagina', 'ciudad', 'producto', 'celular1', 'celular2', 'valor', 'pedido'].every((r) => (ro as any)[r]) && Object.keys(ro).length === 10, Object.keys(ro));
-check('opciones sin importar mayúsculas ni tildes', g.pickOption(rp.pagina!, 'MAN OULET') === 'Man Oulet' && g.pickOption(ro.pagina!, 'man oulet') === 'MAN OULET' && g.pickOption(rp.vendedor!, 'natalia gomez') === 'Natalia Gómez' && g.pickOption(rp.pagina!, 'No existe') === null);
+check('opciones sin importar mayúsculas ni tildes', g.pickOption(rp.pagina!, 'TIENDA 1') === 'Tienda 1' && g.pickOption(ro.pagina!, 'tienda 1') === 'TIENDA 1' && g.pickOption(rp.vendedor!, 'asesora numero 6') === 'Asesora Número 6' && g.pickOption(rp.pagina!, 'No existe') === null);
 
 // Armar la respuesta
-const good = { vendedor: 'Karol', tipoVenta: 'país', pagina: 'tu tienda segura', nombre: 'Laura Gómez', viaTipo: 'KR', viaNumero: '15', placa1: '20', placa2: '19', barrio: 'Remanso', ciudad: 'VILLAVICENCIO-META', celular1: '3001234567', valor: '97800', pedido: '2 buzos talla L', producto: 'promo buzos' };
+const good = { vendedor: 'asesora numero 4', tipoVenta: 'país', pagina: 'tienda 35', nombre: 'Laura Gómez', viaTipo: 'KR', viaNumero: '15', placa1: '20', placa2: '19', barrio: 'Remanso', ciudad: 'VILLAVICENCIO-META', celular1: '3001234567', valor: '97800', pedido: '2 buzos talla L', producto: 'promo buzos' };
 const ans = g.buildAnswers(pais, good);
-check('arma la respuesta con cada dato en su casilla', ans['entry.1026698853'] === 'KR' && ans['entry.1777544353'] === '15' && ans['entry.2103579609'] === '#' && ans['entry.820046072'] === '20' && ans['entry.1162553361'] === '-' && ans['entry.83375407'] === '19' && ans['entry.372852446'] === 'País' && ans['entry.1888450940'] === 'Tu Tienda Segura' && ans['entry.1141661275'] === 'Promo buzos' && !('entry.2114539845' in ans), ans);
+check('arma la respuesta con cada dato en su casilla', ans['entry.1026698853'] === 'KR' && ans['entry.1777544353'] === '15' && ans['entry.2103579609'] === '#' && ans['entry.820046072'] === '20' && ans['entry.1162553361'] === '-' && ans['entry.83375407'] === '19' && ans['entry.372852446'] === 'País' && ans['entry.1888450940'] === 'Tienda 35' && ans['entry.1141661275'] === 'Promo buzos' && !('entry.2114539845' in ans), ans);
 check('falta un dato obligatorio → no arma', fails(() => g.buildAnswers(pais, { ...good, barrio: '' }), 'falta_dato'));
 check('una opción que no existe en la lista → no arma', fails(() => g.buildAnswers(pais, { ...good, vendedor: 'Athena' }), 'opcion_no_existe') && fails(() => g.buildAnswers(pais, { ...good, viaTipo: 'CALLE' }), 'opcion_no_existe'));
 const changed = { ...pais, questions: [...pais.questions, { entry: '999', title: 'Pregunta nueva', kind: 'texto', required: true, options: [] }] };
 check('si agregan una pregunta obligatoria, se detiene', fails(() => g.buildAnswers(changed, good), 'formulario_cambio'));
 check('una pregunta nueva opcional no estorba', Object.keys(g.buildAnswers({ ...pais, questions: [...pais.questions, { entry: '998', title: 'Nota', kind: 'texto', required: false, options: [] }] }, good)).length === Object.keys(ans).length);
-const ao = g.buildAnswers(ofi, { vendedor: 'karol', nombre: 'Laura', direccionOficina: 'Oficina principal Interrapidísimo', pagina: 'TU TIENDA SEGURA', ciudad: 'GRANADA-META', producto: 'tenis', celular1: '3001234567', valor: '120000', pedido: '1 tenis talla 40' });
+const ao = g.buildAnswers(ofi, { vendedor: 'asesora numero 4', nombre: 'Laura', direccionOficina: 'Oficina principal Interrapidísimo', pagina: 'tienda 35', ciudad: 'GRANADA-META', producto: 'tenis', celular1: '3001234567', valor: '120000', pedido: '1 tenis talla 40' });
 check('arma la de Oficina', ao['entry.1984856248'] === 'Oficina principal Interrapidísimo' && ao['entry.213284690'] === 'TENIS' && Object.keys(ao).length === 9, ao);
 
 // Envío a un Google de mentira
