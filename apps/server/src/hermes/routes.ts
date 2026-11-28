@@ -90,7 +90,7 @@ async function blockedInfo(companyId: string, phone: string): Promise<{ reason: 
  * Revisa un pedido antes de crearlo: teléfono, dirección, cliente bloqueado, historial y duplicados.
  * `errors` impiden crearlo; `warnings` solo informan. Lo usan el formulario y la importación en lote.
  */
-export async function inspectOrder(ctx: OrderActor, b: OrderData) {
+export async function inspectOrder(ctx: OrderActor, b: OrderData, opts: { lenientAddress?: boolean } = {}) {
   const phone = bot.normalizePhone(b.phone);
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -106,7 +106,9 @@ export async function inspectOrder(ctx: OrderActor, b: OrderData) {
   const addressCheck = checkAddress(fullAddress, b.city);
   // Una dirección incompleta es la primera causa de devolución: sin los datos obligatorios el pedido no se crea.
   const addressErrors = addressCheck.issues.filter((i) => i.severity === 'error');
-  if (addressErrors.length) fail('direccion_incompleta', `La dirección está incompleta. ${addressErrors.map((i) => i.message).join(' ')}`);
+  // Al importar en lote la dirección ya viene revisada por el equipo: lo que falte solo se avisa.
+  if (addressErrors.length && opts.lenientAddress) warnings.push(`Revisa la dirección. ${addressErrors.map((i) => i.message).join(' ')}`);
+  else if (addressErrors.length) fail('direccion_incompleta', `La dirección está incompleta. ${addressErrors.map((i) => i.message).join(' ')}`);
   for (const i of addressCheck.issues.filter((x) => x.severity === 'aviso')) warnings.push(i.message);
 
   const blocked = phoneOk ? await blockedInfo(ctx.companyId, phone) : null;
@@ -200,7 +202,7 @@ async function rowToOrder(ctx: Ctx, row: z.infer<typeof importRow>, sellers: { i
     }
     return { order: null, pre: null, errors: errors.length ? errors : ['Datos no válidos.'], warnings };
   }
-  const pre = await inspectOrder(ctx, parsed.data);
+  const pre = await inspectOrder(ctx, parsed.data, { lenientAddress: true });
   return { order: parsed.data, pre, errors: [...errors, ...pre.errors], warnings: [...warnings, ...pre.warnings] };
 }
 
@@ -481,7 +483,7 @@ export function hermesRoutes(app: FastifyInstance): void {
         continue;
       }
       // Se vuelve a revisar justo antes de crear: una fila anterior del mismo lote puede haber abierto un pedido para ese teléfono.
-      const pre = await inspectOrder(req.ctx, r.order);
+      const pre = await inspectOrder(req.ctx, r.order, { lenientAddress: true });
       if (pre.errors.length) {
         skipped.push({ index: r.index, customerName: r.customerName, errors: pre.errors });
         continue;
