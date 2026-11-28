@@ -85,6 +85,12 @@ export const TEMPLATES: { key: string; title: string; required: boolean; when: s
     sample: { customer_name: 'Laura', agent_name: 'Valentina', order_code: 'H-000123', company: 'Mi Tienda', items: '2 fajas talla M', payment: 'Total a pagar al recibir: $120.000', address: 'Calle 10 # 5-20, barrio Centro, Cali' },
   },
   {
+    key: 'hermes_pedido_recibido', title: 'Datos del pedido, sin exigir respuesta', required: false, when: 'Al crear el pedido, cuando la confirmación no es obligatoria. Si está aprobada, se usa en lugar de «Confirmación del pedido».',
+    text: 'Hola {{customer_name}} 👋 Soy {{agent_name}} de {{company}}.\n\n¡Gracias por tu compra! Ya estamos preparando tu pedido {{order_code}}:\n\n🛍️ Productos: {{items}}\n📍 Dirección: {{address}}\n💵 {{payment}}\n\nSi todo está bien no tienes que hacer nada: te escribo apenas lo despachemos. Si hay algo por corregir, avísame aquí.',
+    buttons: ['Corregir datos', 'Cancelar'],
+    sample: { customer_name: 'Laura', agent_name: 'Valentina', order_code: 'H-000123', company: 'Mi Tienda', items: '2 fajas talla M', payment: 'Total a pagar al recibir: $120.000', address: 'Calle 10 # 5-20, barrio Centro, Cali' },
+  },
+  {
     key: 'hermes_recordatorio', title: 'Recordatorio de confirmación', required: true, when: 'Si el cliente no responde la confirmación.',
     text: 'Hola {{customer_name}}, soy {{agent_name}} otra vez 😊 Quiero asegurarme de que tu pedido {{order_code}} te llegue sin problema. Lo enviamos a: {{address}}. ¿Está todo bien para despacharlo?',
     buttons: ['Confirmar pedido', 'Corregir datos', 'Cancelar'],
@@ -169,6 +175,12 @@ export const MESSAGES = {
     template: 'hermes_confirmacion',
     body: `Hola ${firstName(o.customer_name)} 👋 Soy ${agent} de ${company}.\n\n¡Gracias por tu compra! Estos son los datos de tu pedido ${o.code}:\n\n🛍️ Productos: ${itemsText(o)}\n📍 Dirección: ${o.address}, ${o.city}${o.notes ? ` (${o.notes})` : ''}\n💵 ${payVar(o)}${missingLine(o)}\n\n¿Me confirmas que todo está bien para despacharlo?`,
     buttons: CONFIRM_BUTTONS,
+    params: { customer_name: v(firstName(o.customer_name), 60), agent_name: v(agent, 40), order_code: o.code, company: v(company, 80), items: v(itemsText(o)), payment: payVar(o), address: v(`${o.address}, ${o.city}`) },
+  }),
+  pedido_recibido: (o: Order, company: string, agent: string): Outgoing => ({
+    template: 'hermes_pedido_recibido',
+    body: `Hola ${firstName(o.customer_name)} 👋 Soy ${agent} de ${company}.\n\n¡Gracias por tu compra! Ya estamos preparando tu pedido ${o.code}:\n\n🛍️ Productos: ${itemsText(o)}\n📍 Dirección: ${o.address}, ${o.city}${o.notes ? ` (${o.notes})` : ''}\n💵 ${payVar(o)}${missingLine(o)}\n\nSi todo está bien no tienes que hacer nada: te escribo apenas lo despachemos. Si hay algo por corregir, avísame aquí.`,
+    buttons: CONFIRM_BUTTONS.filter((b) => b.payload !== 'CONFIRMAR'),
     params: { customer_name: v(firstName(o.customer_name), 60), agent_name: v(agent, 40), order_code: o.code, company: v(company, 80), items: v(itemsText(o)), payment: payVar(o), address: v(`${o.address}, ${o.city}`) },
   }),
   recordatorio: (o: Order, agent: string): Outgoing => ({
@@ -431,7 +443,10 @@ export async function startConfirmation(o: Order): Promise<void> {
     await patch(o, { status: 'confirmado', awaiting: informs ? 'confirmacion' : null, confirmed_at: new Date().toISOString() });
     await logEvent(o, 'confirmado', informs ? 'Confirmado al crearlo: se le informa al cliente, sin esperar su respuesta' : 'Confirmado al crearlo: no se pide confirmación al cliente');
     if (!informs) return;
-    await send(o, MESSAGES.confirmacion(o, await companyName(o.company_id), await agentName(o.company_id)));
+    // Con su plantilla aprobada el mensaje no pide confirmar; si falta, sale el de confirmación de siempre.
+    const { driver, templates } = await channelOf(o.company_id);
+    const own = driver === 'simulado' || Boolean(templates.hermes_pedido_recibido);
+    await send(o, (own ? MESSAGES.pedido_recibido : MESSAGES.confirmacion)(o, await companyName(o.company_id), await agentName(o.company_id)));
     await logEvent(o, 'confirmacion_enviada', 'Se le enviaron los datos del pedido al cliente');
     return;
   }
