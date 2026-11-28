@@ -84,3 +84,11 @@ export function describeHokoError(err: HokoError): string {
   if (err.code === 'sin_conexion') return 'no se pudo conectar con Hoko.';
   return `Hoko rechazó la consulta.${detail}`;
 }
+
+/** Tienda de Hoko a la que pertenece la cuenta conectada, como «Nombre (n.º 123)». Hoko solo deja ver las órdenes de esa tienda. */
+export async function storeLabel(operatorId: string): Promise<string> {
+  const data = await withToken(operatorId, (t) => request('GET', '/member/store', t));
+  const name = typeof data?.name === 'string' ? data.name.trim().slice(0, 120) : '';
+  const id = data?.id != null ? String(data.id).slice(0, 20) : '';
+  return [name, id ? `(n.º ${id})` : ''].filter(Boolean).join(' ');
+}

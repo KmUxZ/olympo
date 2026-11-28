@@ -29,6 +29,18 @@ async function operatorOf(companyId: string, id: string): Promise<Operator> {
   return rows[0];
 }
 
+/** Averigua y guarda a qué tienda de Hoko pertenece la cuenta conectada. Si Hoko no responde, queda sin dato. */
+async function rememberStore(operatorId: string): Promise<string | null> {
+  try {
+    const store = await hokoApi.storeLabel(operatorId);
+    if (!store) return null;
+    await db.query(`UPDATE hermes_operators SET api_store = $2 WHERE id = $1`, [operatorId, store]);
+    return store;
+  } catch {
+    return null;
+  }
+}
+
 /** Una fila del archivo de guías, tal como llega de la hoja. */
 const guideRow = z.object({
   phone: z.string().max(25).default(''),
@@ -83,13 +95,15 @@ export function operatorRoutes(app: FastifyInstance): void {
   app.get('/api/hermes/operators', guard('admin', 'supervisor'), async (req) => {
     const isAdmin = req.ctx.role === 'admin';
     const { rows } = await db.query(
-      `SELECT op.id, op.name, op.carrier, op.driver, op.active, op.webhook_key, op.last_event_at AS "lastEventAt", op.api_email, (op.api_password IS NOT NULL) AS "hasAccount", op.api_error AS "accountError", op.api_error_at AS "accountErrorAt",
+      `SELECT op.id, op.name, op.carrier, op.driver, op.active, op.webhook_key, op.last_event_at AS "lastEventAt", op.api_email, (op.api_password IS NOT NULL) AS "hasAccount", op.api_error AS "accountError", op.api_store AS "accountStore", op.api_error_at AS "accountErrorAt",
               (SELECT count(*)::int FROM hermes_operator_events e WHERE e.operator_id = op.id AND e.order_id IS NULL AND e.at >= now() - interval '7 days') AS "unmatched",
               (SELECT count(*)::int FROM hermes_orders o WHERE o.operator_id = op.id AND o.status = 'confirmado') AS "toDispatch",
               (SELECT count(*)::int FROM hermes_orders o WHERE o.operator_id = op.id AND o.status IN ('despachado', 'en_reparto', 'novedad')) AS "onTheWay"
          FROM hermes_operators op WHERE op.company_id = $1 ORDER BY op.active DESC, op.name`,
       [req.ctx.companyId],
     );
+    // Cuentas conectadas antes de que se guardara la tienda: se averigua una sola vez.
+    if (isAdmin) for (const op of rows as { id: string; hasAccount: boolean; accountStore: string | null }[]) if (op.hasAccount && !op.accountStore) op.accountStore = await rememberStore(op.id);
     const none = await db.query(`SELECT count(*)::int AS n FROM hermes_orders WHERE company_id = $1 AND operator_id IS NULL AND status = 'confirmado'`, [req.ctx.companyId]);
     // La dirección de avisos lleva una clave: solo la ve el administrador.
     const operators = rows.map(({ webhook_key, api_email, ...op }) => ({ ...op, accountEmail: isAdmin ? (api_email ?? '') : '', webhookUrl: isAdmin && webhook_key ? `${publicUrl()}/api/hermes/webhook/hoko/${webhook_key}` : null }));
@@ -138,7 +152,8 @@ export function operatorRoutes(app: FastifyInstance): void {
     } catch (err) {
       throw badRequest((err as Error).message, err instanceof hokoApi.HokoError && err.code === 'credenciales' ? 'credenciales_no_validas' : 'operador_no_responde');
     }
-    await db.query(`UPDATE hermes_operators SET api_email = $2, api_password = $3, api_token = $4, api_error = NULL, api_error_at = NULL WHERE id = $1`, [id, b.email, encryptSecret(b.password), encryptSecret(token)]);
+    await db.query(`UPDATE hermes_operators SET api_email = $2, api_password = $3, api_token = $4, api_error = NULL, api_error_at = NULL, api_store = NULL WHERE id = $1`, [id, b.email, encryptSecret(b.password), encryptSecret(token)]);
+    await rememberStore(id);
     await auditBy(req.ctx, { action: 'hermes.operador_cuenta', entityType: 'operador', entityId: id, summary: `Conectó la cuenta de Hoko en ${op.name}` });
     return { ok: true };
   });
@@ -146,7 +161,7 @@ export function operatorRoutes(app: FastifyInstance): void {
   app.delete('/api/hermes/operators/:id/account', guard('admin'), async (req) => {
     const { id } = parse(idParam, req.params);
     const op = await operatorOf(req.ctx.companyId, id);
-    await db.query(`UPDATE hermes_operators SET api_email = NULL, api_password = NULL, api_token = NULL WHERE id = $1`, [id]);
+    await db.query(`UPDATE hermes_operators SET api_email = NULL, api_password = NULL, api_token = NULL, api_store = NULL, api_error = NULL, api_error_at = NULL WHERE id = $1`, [id]);
     await auditBy(req.ctx, { action: 'hermes.operador_cuenta', entityType: 'operador', entityId: id, summary: `Quitó la cuenta de Hoko de ${op.name}` });
     return { ok: true };
   });

@@ -8,7 +8,7 @@ import { sheetFileText } from '../../lib/xlsx';
 import { Badge, Empty, ErrorNote, Field, FormModal, Loading, Modal } from '../../components/ui';
 import { parseColumns } from './Import';
 
-export interface Operator { accountError?: string | null; accountErrorAt?: string | null; id: string; name: string; carrier: string; driver: string; active: boolean; toDispatch: number; onTheWay: number; webhookUrl: string | null; lastEventAt: string | null; unmatched: number; hasAccount: boolean; accountEmail: string }
+export interface Operator { accountStore?: string | null; accountError?: string | null; accountErrorAt?: string | null; id: string; name: string; carrier: string; driver: string; active: boolean; toDispatch: number; onTheWay: number; webhookUrl: string | null; lastEventAt: string | null; unmatched: number; hasAccount: boolean; accountEmail: string }
 interface OperatorEvent { id: string; at: string; externalRef: string; guideNumber: string; stateName: string; phone: string; result: string; code: string | null }
 export interface OperatorList { operators: Operator[]; unassignedToDispatch: number }
 
@@ -174,7 +174,7 @@ function ConnectModal({ operator, isAdmin, onClose, onChanged }: { operator: Ope
                 </p>
                 {operator.hasAccount ? (
                   <div className="row">
-                    <span className="small grow">Conectada como <strong>{operator.accountEmail}</strong></span>
+                    <span className="small grow">Conectada como <strong>{operator.accountEmail}</strong>{operator.accountStore ? <> · tienda de Hoko: <strong>{operator.accountStore}</strong></> : null}<br /><span className="xs muted">Hoko solo entrega el PDF de las órdenes creadas por esa tienda.</span></span>
                     <button className="btn sm danger" disabled={busy} onClick={() => window.confirm('¿Quitar la cuenta de Hoko? Los mensajes de guía volverán a salir sin el enlace al PDF.') && void removeAccount()}>Quitar cuenta</button>
                   </div>
                 ) : (
