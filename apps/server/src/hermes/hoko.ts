@@ -9,6 +9,8 @@ export interface HokoOperator { id: string; company_id: string; name: string; ca
 
 /** Qué significa para Hermes cada estado de guía de Hoko. Un valor desconocido se trata como en tránsito. */
 type Step = 'espera' | 'transito' | 'reparto' | 'oficina' | 'novedad' | 'entregado' | 'devuelto' | 'aviso';
+/** Estados en los que el pedido todavía espera su guía. */
+const WAITING = ['confirmado', 'por_confirmar'];
 const STATES: Record<number, { step: Step; label: string; note?: string }> = {
   0: { step: 'aviso', label: 'Cancelada', note: 'Hoko canceló la guía de este pedido' },
   1: { step: 'espera', label: 'Activa' },
@@ -74,18 +76,17 @@ export async function handleGuideEvent(op: HokoOperator, raw: unknown): Promise<
   if (!order) {
     if (phone.length < 10) return record('El aviso no trae un teléfono válido para buscar el pedido.');
     const { rows } = await db.query<Row>(
-      `SELECT * FROM hermes_orders WHERE company_id = $1 AND phone = $2 AND status = 'confirmado' AND operator_ref = '' AND (operator_id IS NULL OR operator_id = $3) ORDER BY created_at`,
+      `SELECT * FROM hermes_orders WHERE company_id = $1 AND phone = $2 AND status IN ('confirmado', 'por_confirmar') AND operator_ref = '' AND (operator_id IS NULL OR operator_id = $3) ORDER BY created_at`,
       [op.company_id, phone, op.id],
     );
-    if (rows.length > 1) return record(`Hay ${rows.length} pedidos confirmados con ese teléfono (${rows.map((r) => r.code).join(', ')}): enlázalo a mano.`);
+    if (rows.length > 1) return record(`Hay ${rows.length} pedidos abiertos con ese teléfono (${rows.map((r) => r.code).join(', ')}): enlázalo a mano.`);
     if (!rows.length) {
       const other = (await db.query<{ code: string; status: string }>(
         `SELECT code, status FROM hermes_orders WHERE company_id = $1 AND phone = $2 AND status NOT IN ('entregado', 'devuelto', 'cancelado') ORDER BY created_at DESC LIMIT 1`,
         [op.company_id, phone],
       )).rows[0];
-      if (other?.status === 'por_confirmar') return record(`El pedido ${other.code} de ese teléfono aún no está confirmado por el cliente.`);
       if (other) return record(`El pedido ${other.code} de ese teléfono ya tiene otra guía o es de otro operador.`);
-      return record('No hay un pedido confirmado con ese teléfono.');
+      return record('No hay un pedido pendiente de guía con ese teléfono.');
     }
     order = rows[0];
     await db.query(`UPDATE hermes_orders SET operator_id = $2, operator_ref = $3, updated_at = now() WHERE id = $1`, [order.id, op.id, ref]);
@@ -103,8 +104,10 @@ export async function handleGuideEvent(op: HokoOperator, raw: unknown): Promise<
   /** Si el pedido aún no figura despachado, se despacha con la guía (y el bot se la envía al cliente). */
   const ensureDispatched = async (): Promise<bot.Order | null> => {
     let o = await fresh();
-    if (o.status === 'confirmado') {
+    if (WAITING.includes(o.status)) {
       if (!number) return null;
+      // La guía ya existe: se envía aunque el cliente no haya respondido la confirmación.
+      if (o.status === 'por_confirmar') await bot.logEvent(o, 'confirmado', 'Se despacha sin esperar la confirmación: el operador ya generó la guía', op.name);
       await bot.dispatch(o, { carrier, trackingNumber: number, trackingUrl: '' }, op.name);
       o = await fresh();
     }
@@ -117,13 +120,13 @@ export async function handleGuideEvent(op: HokoOperator, raw: unknown): Promise<
       if (!number) return record(`Guía en preparación (${meaning.label}): se avisará al cliente cuando tenga número.`);
       const was = order.status;
       await ensureDispatched();
-      return record(was === 'confirmado' ? `Guía ${number} generada: se le envió al cliente.` : `${meaning.label}: sin cambio para el cliente.`);
+      return record(WAITING.includes(was) ? `Guía ${number} generada: se le envió al cliente.` : `${meaning.label}: sin cambio para el cliente.`);
     }
     case 'transito': {
       const was = order.status;
       const o = await ensureDispatched();
       if (!o) return record('El aviso no trae número de guía: no se pudo despachar.');
-      return record(was === 'confirmado' ? `Despachado con la guía ${number}.` : `${meaning.label}: sin cambio para el cliente.`);
+      return record(WAITING.includes(was) ? `Despachado con la guía ${number}.` : `${meaning.label}: sin cambio para el cliente.`);
     }
     case 'reparto': {
       const o = await ensureDispatched();
@@ -178,12 +181,12 @@ export async function dispatchLinkedGuides(): Promise<void> {
     `SELECT o.id, o.company_id, op.carrier, op.name,
             (SELECT e.guide_number FROM hermes_operator_events e WHERE e.operator_id = o.operator_id AND e.external_ref = o.operator_ref AND e.guide_number <> '' ORDER BY e.at DESC LIMIT 1) AS guide
        FROM hermes_orders o JOIN hermes_operators op ON op.id = o.operator_id
-      WHERE o.status = 'confirmado' AND o.operator_ref <> '' AND o.tracking_number = '' AND o.operator_state IN ('1', '5', '13')
+      WHERE o.status IN ('confirmado', 'por_confirmar') AND o.operator_ref <> '' AND o.tracking_number = '' AND o.operator_state IN ('1', '5', '13')
       ORDER BY o.updated_at LIMIT 50`,
   );
   for (const r of rows) {
     if (!r.guide) continue;
     const o = await bot.getOrder(r.company_id, r.id);
-    if (o && o.status === 'confirmado') await bot.dispatch(o, { carrier: r.carrier || r.name, trackingNumber: r.guide, trackingUrl: '' }, r.name);
+    if (o && WAITING.includes(o.status)) await bot.dispatch(o, { carrier: r.carrier || r.name, trackingNumber: r.guide, trackingUrl: '' }, r.name);
   }
 }
