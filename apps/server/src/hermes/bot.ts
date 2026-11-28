@@ -549,6 +549,14 @@ const END = '(?![a-záéíóúüñ0-9])';
 const YES = new RegExp(`^(s[ií]|si confirmo|confirmo|confirmar|confirmado|ok|okay|dale|listo|de una|correcto|claro)${END}`, 'i');
 const NO = new RegExp(`^(no|cancelar|cancela|cancelo|ya no|no lo quiero)${END}`, 'i');
 
+// Mensajes de cortesía: no piden nada, así que no se contestan ni se pasan a una persona.
+const COURTESY = /\b(muchisimas gracias|muchas gracias|mil gracias|gracias|muy amable|okay|okey|oki|ok|vale|listo|perfecto|bueno|bien|dale|de una|entendido|super|genial|excelente|claro|si|senorita|senora|senor|dios (te|le|los|lo|la) (bendiga|pague)|bendiciones|amen|quedo (atento|atenta|pendiente)|estare (atento|atenta|pendiente)|igualmente|a ti|a usted|feliz (dia|tarde|noche)|que (estes|este|esten) (muy )?bien)\b/g;
+export function isCourtesy(typed: string): boolean {
+  if (!typed || typed.startsWith('[')) return false;
+  const plainText = typed.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, ' ');
+  return plainText.replace(COURTESY, ' ').trim() === '';
+}
+
 /**
  * Procesa un mensaje entrante. `payload` es el botón pulsado (si lo hubo); `text`, lo que escribió.
  * Regla general: el bot solo resuelve lo que entiende sin ambigüedad; lo demás pasa a una persona.
@@ -599,14 +607,14 @@ export async function handleInbound(
     else if (intent === 'CORREGIR') {
       await patch(o, { awaiting: 'direccion' });
       await send(o, MESSAGES.pedir_direccion());
-    } else await toHuman(o, 'El cliente respondió algo que el bot no entiende');
+    } else if (!isCourtesy(typed)) await toHuman(o, 'El cliente respondió algo que el bot no entiende');
   } else if (o.awaiting === 'confirmacion' && o.status === 'por_confirmar') {
     if (intent === 'CONFIRMAR') await confirm(o);
     else if (intent === 'CANCELAR') await cancel(o, 'Cancelado por el cliente');
     else if (intent === 'CORREGIR') {
       await patch(o, { awaiting: 'direccion' });
       await send(o, MESSAGES.pedir_direccion());
-    } else await toHuman(o, 'El cliente respondió algo que el bot no entiende');
+    } else if (!isCourtesy(typed)) await toHuman(o, 'El cliente respondió algo que el bot no entiende');
   } else if (o.awaiting === 'direccion' && typed) {
     const check = checkAddress(typed, o.city);
     if (await stillIncomplete(o, typed, check)) return { orderId: o.id };
@@ -668,6 +676,8 @@ export async function handleInbound(
   } else if (o.status === 'confirmado' && (intent === 'CANCELAR' || intent === 'CORREGIR')) {
     // El pedido ya pudo salir hacia el operador: lo decide una persona, que puede ver si ya tiene guía.
     await toHuman(o, intent === 'CANCELAR' ? 'El cliente pide cancelar un pedido ya confirmado: revisar si ya tiene guía antes de cancelarlo' : 'El cliente quiere corregir los datos de un pedido ya confirmado: revisar si ya tiene guía');
+  } else if (isCourtesy(typed)) {
+    // «Gracias», «ok», «listo» o solo emojis: no hay nada que resolver ni que contestar.
   } else if (!FINAL_STATUSES.includes(o.status)) {
     await toHuman(o, 'El cliente escribió y espera respuesta');
   } else {

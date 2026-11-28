@@ -24,8 +24,15 @@ export function ingestConversation(companyId: string, ch: pancake.Channel, phone
     const messages = await pancake.listMessages(ch, pancake.conversationId(ch.pageId, phone));
     if (!messages) return null;
     let handled = 0;
+    // El mismo WhatsApp se usa para vender: lo que el cliente escribió antes de que existiera su pedido
+    // es la conversación de la venta, no una respuesta a Hermes, y no se procesa.
+    const open = await db.query<{ created_at: Date }>(
+      `SELECT created_at FROM hermes_orders WHERE company_id = $1 AND phone = $2 ORDER BY (status IN ('entregado', 'devuelto', 'cancelado')), created_at DESC LIMIT 1`,
+      [companyId, bot.normalizePhone(phone)],
+    );
+    const from = open.rows[0] ? Math.max(since.getTime(), new Date(open.rows[0].created_at).getTime()) : since.getTime();
     for (const m of messages) {
-      if (!m.at || m.at.getTime() < since.getTime()) continue;
+      if (!m.at || m.at.getTime() < from) continue;
       const seen = await db.query(`SELECT 1 FROM hermes_messages WHERE company_id = $1 AND external_id = $2`, [companyId, m.id]);
       if (seen.rows.length) continue; // ya procesado, o es un mensaje que envió Hermes
       const text = m.text || (m.hasAttachment ? '[Archivo adjunto]' : '');
