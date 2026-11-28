@@ -73,3 +73,14 @@ export async function guidePdf(operatorId: string, orderRef: string): Promise<st
   const url = typeof data?.guide_pdf === 'string' ? data.guide_pdf : '';
   return /^https:\/\//i.test(url) ? url : null;
 }
+
+/** Explica un fallo de Hoko en palabras de quien administra la cuenta. */
+export function describeHokoError(err: HokoError): string {
+  const detail = ` (Hoko respondió ${err.status || 'sin conexión'}: ${err.message})`;
+  if (err.status === 403) return `la cuenta conectada no es la de la tienda dueña de esa orden. Conecta en este operador el usuario de Hoko de esa misma tienda.${detail}`;
+  if (err.status === 404) return `Hoko no encuentra esa orden con la cuenta conectada.${detail}`;
+  if (err.status === 401 || err.code === 'credenciales') return `Hoko no aceptó la sesión ni el correo y la contraseña guardados. Vuelve a conectar la cuenta.${detail}`;
+  if (err.status === 429) return `Hoko limitó las consultas por un momento; se recupera solo.${detail}`;
+  if (err.code === 'sin_conexion') return 'no se pudo conectar con Hoko.';
+  return `Hoko rechazó la consulta.${detail}`;
+}

@@ -2,7 +2,7 @@
 // enlace es al azar e imposible de adivinar, y lo único que hace es llevar al PDF que entrega el operador.
 import type { FastifyInstance } from 'fastify';
 import { db } from '../db/db.ts';
-import { guidePdf, HokoError } from './hoko-api.ts';
+import { describeHokoError, guidePdf, HokoError } from './hoko-api.ts';
 
 /** El enlace del PDF que da el operador caduca a los 7 días: se reutiliza hasta 5 y después se pide uno nuevo. */
 const PDF_MAX_AGE_MS = 5 * 86_400_000;
@@ -30,9 +30,13 @@ export function trackRoutes(app: FastifyInstance): void {
       const url = await guidePdf(o.operator_id, o.operator_ref);
       if (!url) return html(503, 'Tu guía se está generando', 'Vuelve a abrir este enlace en unos minutos.');
       await db.query(`UPDATE hermes_orders SET guide_pdf_url = $2, guide_pdf_at = now() WHERE id = $1`, [o.id, url]);
+      await db.query(`UPDATE hermes_operators SET api_error = NULL, api_error_at = NULL WHERE id = $1 AND api_error IS NOT NULL`, [o.operator_id]);
       return go(url);
     } catch (err) {
       req.log.warn({ err: (err as Error).message, code: err instanceof HokoError ? err.code : undefined }, 'no se pudo obtener el PDF de la guía');
+      // Queda a la vista en la pantalla del operador: sin esto el motivo solo estaría en los registros del servidor.
+      const why = err instanceof HokoError ? `Orden ${o.operator_ref}: ${describeHokoError(err)}` : `Orden ${o.operator_ref}: error inesperado.`;
+      await db.query(`UPDATE hermes_operators SET api_error = $2, api_error_at = now() WHERE id = $1`, [o.operator_id, why.slice(0, 400)]).catch(() => undefined);
       // Si el operador falla pero hay un enlace anterior, se intenta con ese.
       if (o.guide_pdf_url && /^https:\/\//i.test(o.guide_pdf_url)) return go(o.guide_pdf_url);
       return html(503, 'No pudimos abrir la guía en este momento', 'Intenta de nuevo en unos minutos. Si sigue igual, respóndenos en el chat de WhatsApp.');

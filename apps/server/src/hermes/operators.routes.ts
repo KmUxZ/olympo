@@ -83,7 +83,7 @@ export function operatorRoutes(app: FastifyInstance): void {
   app.get('/api/hermes/operators', guard('admin', 'supervisor'), async (req) => {
     const isAdmin = req.ctx.role === 'admin';
     const { rows } = await db.query(
-      `SELECT op.id, op.name, op.carrier, op.driver, op.active, op.webhook_key, op.last_event_at AS "lastEventAt", op.api_email, (op.api_password IS NOT NULL) AS "hasAccount",
+      `SELECT op.id, op.name, op.carrier, op.driver, op.active, op.webhook_key, op.last_event_at AS "lastEventAt", op.api_email, (op.api_password IS NOT NULL) AS "hasAccount", op.api_error AS "accountError", op.api_error_at AS "accountErrorAt",
               (SELECT count(*)::int FROM hermes_operator_events e WHERE e.operator_id = op.id AND e.order_id IS NULL AND e.at >= now() - interval '7 days') AS "unmatched",
               (SELECT count(*)::int FROM hermes_orders o WHERE o.operator_id = op.id AND o.status = 'confirmado') AS "toDispatch",
               (SELECT count(*)::int FROM hermes_orders o WHERE o.operator_id = op.id AND o.status IN ('despachado', 'en_reparto', 'novedad')) AS "onTheWay"
@@ -138,7 +138,7 @@ export function operatorRoutes(app: FastifyInstance): void {
     } catch (err) {
       throw badRequest((err as Error).message, err instanceof hokoApi.HokoError && err.code === 'credenciales' ? 'credenciales_no_validas' : 'operador_no_responde');
     }
-    await db.query(`UPDATE hermes_operators SET api_email = $2, api_password = $3, api_token = $4 WHERE id = $1`, [id, b.email, encryptSecret(b.password), encryptSecret(token)]);
+    await db.query(`UPDATE hermes_operators SET api_email = $2, api_password = $3, api_token = $4, api_error = NULL, api_error_at = NULL WHERE id = $1`, [id, b.email, encryptSecret(b.password), encryptSecret(token)]);
     await auditBy(req.ctx, { action: 'hermes.operador_cuenta', entityType: 'operador', entityId: id, summary: `Conectó la cuenta de Hoko en ${op.name}` });
     return { ok: true };
   });
