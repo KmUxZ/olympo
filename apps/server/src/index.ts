@@ -3,7 +3,7 @@ import cookie from '@fastify/cookie';
 import Fastify from 'fastify';
 import { config } from './config.ts';
 import { db } from './db/db.ts';
-import { HttpError } from './core/http.ts';
+import { clientIp, HttpError } from './core/http.ts';
 import { authRoutes } from './core/auth.routes.ts';
 import { adminRoutes } from './core/admin.routes.ts';
 import { platformRoutes } from './core/platform.routes.ts';
@@ -31,7 +31,18 @@ import { zeusRoutes } from './zeus/routes.ts';
 import { startJobs } from './argos/jobs.ts';
 
 // En producción el servidor está detrás del proxy del hosting: se confía en él para conocer la IP y el protocolo reales.
-const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' }, bodyLimit: 1_048_576, trustProxy: config.cookieSecure });
+// Las direcciones de los webhooks y de los enlaces de guía llevan una clave secreta: en los registros se oculta.
+const hideKeys = (url: string) => url.replace(/(\/webhook\/[a-z]+\/|\/g\/)[^/?#]+/gi, '$1***');
+const app = Fastify({
+  logger: {
+    level: process.env.LOG_LEVEL ?? 'info',
+    serializers: {
+      req: (req) => ({ method: req.method, url: hideKeys(req.url), host: req.headers?.host, remoteAddress: clientIp(req) }),
+    },
+  },
+  bodyLimit: 1_048_576,
+  trustProxy: config.cookieSecure,
+});
 await app.register(cookie);
 
 // Cabeceras de seguridad en todas las respuestas.

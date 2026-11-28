@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { config } from '../config.ts';
 import { db } from '../db/db.ts';
-import { audit, auditBy, badRequest, guard, HttpError, parse, SESSION_COOKIE } from './http.ts';
+import { audit, auditBy, badRequest, clientIp, guard, HttpError, parse, SESSION_COOKIE } from './http.ts';
 import type { Ctx } from './http.ts';
 import { hashPassword, hashToken, MIN_PASSWORD_LENGTH, newToken, verifyPassword } from './security.ts';
 
@@ -52,7 +52,8 @@ export function authRoutes(app: FastifyInstance): void {
       req.body,
     );
     const accountKey = `cuenta|${body.email}`;
-    const ipKey = `ip|${req.ip}`;
+    const ip = clientIp(req);
+    const ipKey = `ip|${ip}`;
     checkRate(accountKey, ipKey);
 
     const { rows } = await db.query(
@@ -68,7 +69,7 @@ export function authRoutes(app: FastifyInstance): void {
       if (user) {
         await audit(db, {
           companyId: user.company_id, actorId: user.id, actorName: user.name, action: 'acceso.fallido',
-          entityType: 'usuario', entityId: user.id, summary: `Intento de inicio de sesión fallido (${body.client})`, ip: req.ip,
+          entityType: 'usuario', entityId: user.id, summary: `Intento de inicio de sesión fallido (${body.client})`, ip,
         });
       }
       throw new HttpError(401, 'credenciales_invalidas', 'Correo o contraseña incorrectos.');
@@ -89,7 +90,7 @@ export function authRoutes(app: FastifyInstance): void {
     );
     await audit(db, {
       companyId: user.company_id, actorId: user.id, actorName: user.name, action: 'acceso.inicio',
-      entityType: 'usuario', entityId: user.id, summary: `Inicio de sesión (${body.client === 'web' ? 'plataforma web' : 'extensión'})`, ip: req.ip,
+      entityType: 'usuario', entityId: user.id, summary: `Inicio de sesión (${body.client === 'web' ? 'plataforma web' : 'extensión'})`, ip,
     });
 
     const payload = { user: { id: user.id, name: user.name, email: user.email, role: user.role, teamId: user.team_id, mustChangePassword: user.must_change_password, isPlatformAdmin: user.is_platform_admin } };

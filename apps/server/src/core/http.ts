@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import type { FastifyRequest } from 'fastify';
 import type { z } from 'zod';
 import { config, resolveSettings } from '../config.ts';
@@ -54,6 +55,21 @@ export function parse<T>(schema: z.ZodType<T>, data: unknown): T {
     throw new HttpError(400, 'validacion', `Datos no válidos (${where}${first?.message ?? 'revisa los campos'}).`);
   }
   return result.data;
+}
+
+/**
+ * Dirección IP real de quien hace la petición. X-Forwarded-For la puede escribir cualquiera, así que no se usa
+ * su primer valor. En producción se toma la que pone la red de entrada (Cloudflare) y, si no viene, la última
+ * que añadió el proxy del hosting: ninguna de las dos la controla el visitante.
+ */
+export function clientIp(req: FastifyRequest): string {
+  if (config.cookieSecure) {
+    const edge = req.headers['cf-connecting-ip'];
+    if (typeof edge === 'string' && isIP(edge.trim())) return edge.trim();
+    const last = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean).at(-1);
+    if (last && isIP(last)) return last;
+  }
+  return req.socket.remoteAddress ?? req.ip;
 }
 
 export const SESSION_COOKIE = 'olympo_session';
@@ -120,7 +136,7 @@ async function authenticate(req: FastifyRequest): Promise<Ctx> {
     email: r.email,
     teamId: support ? null : r.team_id,
     mustChangePassword: r.must_change_password,
-    ip: req.ip,
+    ip: clientIp(req),
     company: { id: r.company_id, name: r.company_name, timezone: r.timezone, isDemo: r.is_demo, settings: resolveSettings(r.settings), supportAccessUntil: r.support_access_until, products: Array.isArray(r.products) ? r.products : [] },
     isPlatformAdmin: r.is_platform_admin,
     support,
