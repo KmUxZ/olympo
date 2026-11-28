@@ -189,4 +189,41 @@ export async function dispatchLinkedGuides(): Promise<void> {
     const o = await bot.getOrder(r.company_id, r.id);
     if (o && WAITING.includes(o.status)) await bot.dispatch(o, { carrier: r.carrier || r.name, trackingNumber: r.guide, trackingUrl: '' }, r.name);
   }
+  await recoverUnmatchedGuides();
+}
+
+/**
+ * Avisos de guía que no encontraron pedido cuando llegaron (por ejemplo, porque el pedido aún esperaba la
+ * confirmación del cliente). El operador no los repite hasta que la guía cambia de estado, así que se reintentan aquí.
+ * Solo se toma el último aviso de cada orden, de los últimos 3 días, con guía aún sin entregar ni devolver.
+ */
+async function recoverUnmatchedGuides(): Promise<void> {
+  const { rows } = await db.query<{ id: string; company_id: string; operator_id: string; external_ref: string; guide_number: string; state: string; phone: string; at: Date; carrier: string; name: string }>(
+    `SELECT DISTINCT ON (e.operator_id, e.external_ref) e.id, e.company_id, e.operator_id, e.external_ref, e.guide_number, e.state, e.phone, op.carrier, op.name,
+            (SELECT min(f.at) FROM hermes_operator_events f WHERE f.operator_id = e.operator_id AND f.external_ref = e.external_ref) AS at
+       FROM hermes_operator_events e JOIN hermes_operators op ON op.id = e.operator_id AND op.active
+      WHERE e.at >= now() - interval '3 days' AND e.external_ref <> ''
+        AND NOT EXISTS (SELECT 1 FROM hermes_orders o WHERE o.operator_id = e.operator_id AND o.operator_ref = e.external_ref)
+      ORDER BY e.operator_id, e.external_ref, e.at DESC`,
+  );
+  let done = 0;
+  for (const e of rows) {
+    if (done >= 40) break;
+    const step = STATES[Number(e.state)]?.step;
+    if (!e.guide_number || e.phone.length < 10 || (step !== 'espera' && step !== 'transito')) continue;
+    // El pedido debe existir desde antes del primer aviso de esa orden: así una guía vieja no se le pega a un pedido nuevo del mismo cliente.
+    const found = await db.query<{ id: string }>(
+      `SELECT id FROM hermes_orders WHERE company_id = $1 AND phone = $2 AND status IN ('confirmado', 'por_confirmar') AND operator_ref = '' AND tracking_number = ''
+          AND (operator_id IS NULL OR operator_id = $3) AND created_at <= $4`,
+      [e.company_id, e.phone, e.operator_id, e.at],
+    );
+    if (found.rows.length !== 1) continue;
+    const o = await bot.getOrder(e.company_id, found.rows[0].id);
+    if (!o) continue;
+    await db.query(`UPDATE hermes_orders SET operator_id = $2, operator_ref = $3, operator_state = $4, updated_at = now() WHERE id = $1`, [o.id, e.operator_id, e.external_ref, e.state]);
+    await bot.logEvent(o, 'operador_asignado', `Enlazado con la orden ${e.external_ref} de ${e.name} (aviso recuperado)`, e.name);
+    await bot.dispatch((await bot.getOrder(e.company_id, o.id))!, { carrier: e.carrier || e.name, trackingNumber: e.guide_number, trackingUrl: '' }, e.name);
+    await db.query(`UPDATE hermes_operator_events SET order_id = $2, result = $3 WHERE id = $1`, [e.id, o.id, `Recuperado: despachado con la guía ${e.guide_number}.`]);
+    done++;
+  }
 }
